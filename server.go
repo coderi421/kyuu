@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-type handleFunc func(ctx *Context)
+type HandleFunc func(ctx *Context)
 
 var _ Server = (*HTTPServer)(nil)
 
@@ -25,16 +25,24 @@ type Server interface {
 	// AddRoute 路由注册功能
 	// method 是 HTTP 方法
 	// path 是路由
-	// handleFunc 是你的业务逻辑
-	AddRoute(method string, path string, handleFunc handleFunc)
+	// HandleFunc 是你的业务逻辑
+	addRoute(method string, path string, handleFunc HandleFunc)
 
 	// 我们并不采取这种设计方案
 	// 因为后续的中断的行为 很难控制 但是在用户层面可以方便的控制
 	// addRoute(method string, path string, handlers... HandleFunc)
 }
 
+// HTTPServer is the implementation of Server.
 type HTTPServer struct {
 	// addr string 创建的时候传递，而不是 Start 接收。这个都是可以的
+	router
+}
+
+func NewHTTPServer() *HTTPServer {
+	return &HTTPServer{
+		router: newRouter(),
+	}
 }
 
 // ServeHTTP is the entry point for a request handler.
@@ -54,6 +62,13 @@ func (s *HTTPServer) ServeHTTP(writer http.ResponseWriter, request *http.Request
 // serve is the core func to find the route and execute the business logic.
 func (s *HTTPServer) serve(ctx *Context) {
 	// 接下来就是查找路由，并且执行命中的业务逻辑
+	n, ok := s.findRoute(ctx.Req.Method, ctx.Req.URL.Path)
+	if !ok || n.handler == nil {
+		ctx.Resp.WriteHeader(404)
+		ctx.Resp.Write([]byte("Not Found"))
+		return
+	}
+	n.handler(ctx)
 }
 
 // Start starts the HTTP server.
@@ -89,37 +104,31 @@ func (s *HTTPServer) Start(addr string) error {
 	return http.Serve(l, s)
 }
 
-// AddRoute register the route into tree
-func (s *HTTPServer) AddRoute(method string, path string, handleFunc handleFunc) {
-	//TODO implement me
-	// 注册路由到路由树
+//// Start1 这样也可以
+//func (s *HTTPServer) Start1(addr string) error {
+//	return http.ListenAndServe(addr, s)
+//}
+
+func (s *HTTPServer) Get(path string, handleFunc HandleFunc) {
+	s.addRoute(http.MethodGet, path, handleFunc)
 }
 
-// Start1 这样也可以
-func (s *HTTPServer) Start1(addr string) error {
-	return http.ListenAndServe(addr, s)
+func (s *HTTPServer) Post(path string, handleFunc HandleFunc) {
+	s.addRoute(http.MethodPost, path, handleFunc)
 }
 
-func (s *HTTPServer) Get(path string, handleFunc handleFunc) {
-	s.AddRoute(http.MethodGet, path, handleFunc)
+func (s *HTTPServer) Put(path string, handleFunc HandleFunc) {
+	s.addRoute(http.MethodPut, path, handleFunc)
 }
 
-func (s *HTTPServer) Post(path string, handleFunc handleFunc) {
-	s.AddRoute(http.MethodPost, path, handleFunc)
+func (s *HTTPServer) Delete(path string, handleFunc HandleFunc) {
+	s.addRoute(http.MethodDelete, path, handleFunc)
 }
 
-func (s *HTTPServer) Put(path string, handleFunc handleFunc) {
-	s.AddRoute(http.MethodPut, path, handleFunc)
+func (s *HTTPServer) Patch(path string, handleFunc HandleFunc) {
+	s.addRoute(http.MethodPatch, path, handleFunc)
 }
 
-func (s *HTTPServer) Delete(path string, handleFunc handleFunc) {
-	s.AddRoute(http.MethodDelete, path, handleFunc)
-}
-
-func (s *HTTPServer) Patch(path string, handleFunc handleFunc) {
-	s.AddRoute(http.MethodPatch, path, handleFunc)
-}
-
-func (s *HTTPServer) Options(path string, handleFunc handleFunc) {
-	s.AddRoute(http.MethodOptions, path, handleFunc)
+func (s *HTTPServer) Options(path string, handleFunc HandleFunc) {
+	s.addRoute(http.MethodOptions, path, handleFunc)
 }
