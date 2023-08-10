@@ -3,20 +3,18 @@
 package kyuu
 
 import (
-	"fmt"
-	"net/http"
 	"testing"
 )
 
 func TestServer(t *testing.T) {
-	h := &HTTPServer{}
+	s := NewHTTPServer()
 
-	h.AddRoute(http.MethodGet, "/user", func(ctx *Context) {
+	s.Get("/", func(ctx *Context) {
+		ctx.Resp.Write([]byte("hello, world"))
+	})
+	s.Get("/user", func(ctx *Context) {
+		ctx.Resp.Write([]byte("hello, user"))
 	})
 
-	h.Get("/user", func(ctx *Context) {
-		fmt.Println("处理第一件事")
-	})
-
-	_ = h.Start(":8081")
+	_ = s.Start(":8081")
 }
