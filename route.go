@@ -67,6 +67,7 @@ func (r *router) addRoute(method string, path string, handleFunc HandleFunc) {
 	}
 	// 找到最后一个节点，将 handler 赋值
 	root.handler = handleFunc
+	root.route = path
 }
 
 func (r *router) findRoute(method string, path string) (*matchInfo, bool) {
@@ -151,6 +152,8 @@ type node struct {
 	// 子节点的 path => node
 	children map[string]*node
 	handler  HandleFunc // handler 命中路由之后执行的逻辑
+	// route 到达该节点的完整的路由路径
+	route string
 
 	// 通配符 * 表达的节点，任意匹配
 	starChild *node

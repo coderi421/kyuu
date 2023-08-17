@@ -1,12 +1,14 @@
 package kyuu
 
 import (
+	"log"
 	"net"
 	"net/http"
 )
 
 type HandleFunc func(ctx *Context)
 
+// 确保 HTTPServer 肯定实现了 Server 接口
 var _ Server = (*HTTPServer)(nil)
 
 // Server is the interface that wraps the basic ServeHTTP method.
@@ -37,6 +39,7 @@ type Server interface {
 type HTTPServer struct {
 	// addr string 创建的时候传递，而不是 Start 接收。这个都是可以的
 	router
+	mdls []Middleware
 }
 
 func NewHTTPServer() *HTTPServer {
@@ -44,6 +47,21 @@ func NewHTTPServer() *HTTPServer {
 		router: newRouter(),
 	}
 }
+
+// Use 可以通过调用方法注册 Middleware 也可以改成 Opts 函数选项模式
+func (s *HTTPServer) Use(mdls ...Middleware) {
+	if s.mdls == nil {
+		s.mdls = mdls
+		return
+	}
+	s.mdls = append(s.mdls, mdls...)
+}
+
+//// UseV1 会执行路由匹配，只有匹配上了的 mdls 才会生效
+//// 这个只需要稍微改造一下路由树就可以实现
+//func (s *HTTPServer) UseV1(path string, mdls ...Middleware) {
+//	panic("implement me")
+//}
 
 // ServeHTTP is the entry point for a request handler.
 // ServeHTTP 处理请求的入口
@@ -56,19 +74,51 @@ func (s *HTTPServer) ServeHTTP(writer http.ResponseWriter, request *http.Request
 		Resp: writer,
 	}
 
-	s.serve(ctx)
+	// Middleware 和 serve 一起的时候， HTTPServer 执行路由匹配，应该是最后一个，最后一个执行用户的逻辑
+	root := s.serve
+	// 将中间件的逻辑，从后往前 将 root 放在最后一个，注册进去
+	for i := len(s.mdls) - 1; i >= 0; i-- {
+		root = s.mdls[i](root)
+	}
+
+	// 这里执行的时候，就是从前往后了
+
+	// 第一个应该是回写响应的 但是注册进去的时候并未执行
+	// 因为它在调用next之后才回写响应，
+	// 所以实际上 flashResp 是最后一个步骤
+	var m Middleware = func(next HandleFunc) HandleFunc {
+		return func(ctx *Context) {
+			next(ctx)
+			// 用户逻辑执行完之后，进行 response 的拼凑，响应
+			s.flashResp(ctx)
+		}
+	}
+	root = m(root)
+	root(ctx)
 }
 
 // serve is the core func to find the route and execute the business logic.
 func (s *HTTPServer) serve(ctx *Context) {
 	// 接下来就是查找路由，并且执行命中的业务逻辑
-	n, ok := s.findRoute(ctx.Req.Method, ctx.Req.URL.Path)
-	if !ok || n.n.handler == nil {
+	mi, ok := s.findRoute(ctx.Req.Method, ctx.Req.URL.Path)
+	if !ok || mi.n.handler == nil {
 		ctx.Resp.WriteHeader(404)
-		ctx.Resp.Write([]byte("Not Found"))
+		_, _ = ctx.Resp.Write([]byte("Not Found"))
 		return
 	}
-	n.n.handler(ctx)
+	ctx.PathParams = mi.pathParams
+	ctx.MatchedRoute = mi.n.route
+	mi.n.handler(ctx)
+}
+
+func (s *HTTPServer) flashResp(ctx *Context) {
+	if ctx.RespStatusCode > 0 {
+		ctx.Resp.WriteHeader(ctx.RespStatusCode)
+	}
+	_, err := ctx.Resp.Write(ctx.RespData)
+	if err != nil {
+		log.Fatalln("回写响应失败", err)
+	}
 }
 
 // Start starts the HTTP server.
