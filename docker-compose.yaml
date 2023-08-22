@@ -24,7 +24,6 @@ services:
     ports:
       - "13306:3306"
 
-
   # Jaeger
   jaeger-all-in-one:
     image: jaegertracing/all-in-one:latest
