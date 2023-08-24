@@ -28,7 +28,7 @@ type Server interface {
 	// method 是 HTTP 方法
 	// path 是路由
 	// HandleFunc 是你的业务逻辑
-	addRoute(method string, path string, handleFunc HandleFunc)
+	addRoute(method string, path string, handleFunc HandleFunc, ms ...Middleware)
 
 	// 我们并不采取这种设计方案
 	// 因为后续的中断的行为 很难控制 但是在用户层面可以方便的控制
@@ -108,7 +108,14 @@ func (s *HTTPServer) serve(ctx *Context) {
 	}
 	ctx.PathParams = mi.pathParams
 	ctx.MatchedRoute = mi.n.route
-	mi.n.handler(ctx)
+
+	// 这里需要处理路径中的 middlewares
+	root := mi.n.handler
+	for i := len(mi.mdls) - 1; i >= 0; i-- {
+		root = mi.mdls[i](root)
+	}
+	// 最终执行 用户逻辑
+	root(ctx)
 }
 
 func (s *HTTPServer) flashResp(ctx *Context) {

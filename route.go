@@ -28,7 +28,7 @@ func newRouter() router {
 //	    @param method HTTP 方法
 //	    @param path
 //	    @param handleFunc 路由处理函数
-func (r *router) addRoute(method string, path string, handleFunc HandleFunc) {
+func (r *router) addRoute(method string, path string, handleFunc HandleFunc, ms ...Middleware) {
 	// validate route before add
 	r.validateRoute(path)
 
@@ -46,6 +46,7 @@ func (r *router) addRoute(method string, path string, handleFunc HandleFunc) {
 			panic("kyuu: 路由冲突[/]")
 		}
 		root.handler = handleFunc
+		root.mdls = ms
 		return
 	}
 
@@ -59,6 +60,7 @@ func (r *router) addRoute(method string, path string, handleFunc HandleFunc) {
 		}
 
 		// 每次这里的 root 都是上一次的 child
+		// 在这个逻辑中 可以预先 将所有和全路径路由配置的所有 middlewares 都注册到 matched middleware 中
 		root = root.childOrCreate(s)
 	}
 	// 如果 handler 不为空，则说明路由冲突
@@ -68,6 +70,7 @@ func (r *router) addRoute(method string, path string, handleFunc HandleFunc) {
 	// 找到最后一个节点，将 handler 赋值
 	root.handler = handleFunc
 	root.route = path
+	root.mdls = ms
 }
 
 func (r *router) findRoute(method string, path string) (*matchInfo, bool) {
@@ -77,20 +80,24 @@ func (r *router) findRoute(method string, path string) (*matchInfo, bool) {
 	}
 
 	if path == "/" {
-		return &matchInfo{n: root}, true
+		return &matchInfo{n: root, mdls: root.mdls}, true
 	}
 
 	segments := strings.Split(strings.Trim(path, "/"), "/")
 	mi := &matchInfo{}
+	// 将 root 复制一份，不然处理后 findMdls 中的 root 就发生变化，不准
+	cur := root
 	// 分别处理每一段 /a/b/c
 	for _, s := range segments {
 		var child *node
 
-		child, ok = root.childOf(s)
+		child, ok = cur.childOf(s)
 		if !ok {
-			// 如果没有命中任何一个，而且还有 最后一段是 通配符 *， 那么就直接返回 通配符以后的，都归这段处理
-			if root.typ == nodeTypeAny {
-				mi.n = root
+			// 如果没有命中任何一个，而且还有上一段路由 最后一段是 通配符 *， 那么就直接返回 通配符以后的，都归这段处理
+			// /a/b/c -> 归 /a/b/*
+			if cur.typ == nodeTypeAny {
+				mi.n = cur
+				mi.mdls = r.findMdls(cur, segments)
 				return mi, true
 			}
 			return nil, false
@@ -99,10 +106,41 @@ func (r *router) findRoute(method string, path string) (*matchInfo, bool) {
 		if child.paramName != "" {
 			mi.addValue(child.paramName, s)
 		}
-		root = child
+		cur = child
 	}
-	mi.n = root
+	mi.n = cur
+	// 将这条路径上所有可能的 middlewares 一并返回
+	mi.mdls = r.findMdls(root, segments)
+
 	return mi, true
+}
+
+// findMdls find the matched routers` middlewares
+func (r *router) findMdls(root *node, segs []string) []Middleware {
+	queue := []*node{root}
+	res := make([]Middleware, 0, 16)
+	for i := 0; i < len(segs); i++ {
+		seg := segs[i]
+		var children []*node
+		for _, cur := range queue {
+			if len(cur.mdls) > 0 {
+				res = append(res, cur.mdls...)
+			}
+			// 这里将下一层的所有可能的 子节点都找到
+			children = append(children, cur.childrenOf(seg)...)
+		}
+		// 当遍历下一段路由的时候， 将上一段收集的所有子节点赋值给队列
+		queue = children
+	}
+
+	// 最后一次循环 queue 没有被执行，这里需要手动执行一下
+	for _, lastCur := range queue {
+		if len(lastCur.mdls) > 0 {
+			res = append(res, lastCur.mdls...)
+		}
+	}
+
+	return res
 }
 
 // validateRoute
@@ -117,7 +155,6 @@ func (r *router) validateRoute(path string) {
 	if path[0] != '/' {
 		panic("kyuu: 路由必须以 / 开头")
 	}
-
 	if path != "/" && path[len(path)-1] == '/' {
 		panic("kyuu: 路由不能以 / 结尾")
 	}
@@ -152,6 +189,8 @@ type node struct {
 	// 子节点的 path => node
 	children map[string]*node
 	handler  HandleFunc // handler 命中路由之后执行的逻辑
+	// 注册在该节点上的 middleware
+	mdls []Middleware
 	// route 到达该节点的完整的路由路径
 	route string
 
@@ -165,6 +204,10 @@ type node struct {
 	// 正则表达式
 	regChild *node
 	regExpr  *regexp.Regexp
+
+	// 这个地方可能在注册路由的时候，可以为每个节点，直接注册好路由，就不用每次都找一遍了
+	// 用空间换时间
+	matchedMdls []Middleware
 }
 
 // childOf find the child node by path
@@ -304,7 +347,7 @@ func (n *node) parseParam(path string) (string, string, bool) {
 	// 去除 ：
 	path = path[1:]
 	segments := strings.SplitN(path, "(", 2)
-	// 是正则参数
+	// 正则参数
 	if len(segments) == 2 {
 		expr := segments[1]
 		if strings.HasSuffix(expr, ")") {
@@ -315,10 +358,33 @@ func (n *node) parseParam(path string) (string, string, bool) {
 	return path, "", false
 }
 
+// 找到一个节点所有可能匹配到的节点
+// /a -> 可以命中 a * 或者 a :id 或者 a regex
+func (n *node) childrenOf(path string) []*node {
+	// 这里 cap 为2 因为上层限定了， star param regex 不能可能同时出现 所以最多两个
+	res := make([]*node, 0, 2)
+	if n.starChild != nil {
+		res = append(res, n.starChild)
+	}
+	if n.paramChild != nil {
+		res = append(res, n.paramChild)
+	}
+	if n.regChild != nil && n.regChild.regExpr.Match([]byte(path)) {
+		res = append(res, n.regChild)
+	}
+	if n.children != nil {
+		if static, ok := n.children[path]; ok {
+			res = append(res, static)
+		}
+	}
+	return res
+}
+
 // 方便收集路径参数
 type matchInfo struct {
 	n          *node
 	pathParams map[string]string
+	mdls       []Middleware
 }
 
 func (m *matchInfo) addValue(key, value string) {
