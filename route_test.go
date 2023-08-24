@@ -165,7 +165,7 @@ func Test_router_addRoute(t *testing.T) {
 		},
 	}
 
-	msg, ok := wantRouter.equal(r)
+	msg, ok := wantRouter.equal(*r)
 	// 根据布尔值，返回测试返回结果
 	assert.True(t, ok, msg)
 
@@ -257,7 +257,7 @@ func Test_router_addRoute(t *testing.T) {
 //	@param t 目标路由
 //	@return string 错误信息
 //	@return bool 是否相等
-func (r router) equal(y router) (string, bool) {
+func (r *router) equal(y router) (string, bool) {
 	for k, v := range r.trees {
 		yv, ok := y.trees[k]
 		if !ok {
