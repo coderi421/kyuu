@@ -46,6 +46,7 @@ func (r *router) addRoute(method string, path string, handleFunc HandleFunc, ms 
 			panic("kyuu: 路由冲突[/]")
 		}
 		root.handler = handleFunc
+		root.mdls = ms
 		return
 	}
 
@@ -79,21 +80,24 @@ func (r *router) findRoute(method string, path string) (*matchInfo, bool) {
 	}
 
 	if path == "/" {
-		return &matchInfo{n: root}, true
+		return &matchInfo{n: root, mdls: root.mdls}, true
 	}
 
 	segments := strings.Split(strings.Trim(path, "/"), "/")
 	mi := &matchInfo{}
+	// 将 root 复制一份，不然处理后 findMdls 中的 root 就发生变化，不准
+	cur := root
 	// 分别处理每一段 /a/b/c
 	for _, s := range segments {
 		var child *node
 
-		child, ok = root.childOf(s)
+		child, ok = cur.childOf(s)
 		if !ok {
 			// 如果没有命中任何一个，而且还有上一段路由 最后一段是 通配符 *， 那么就直接返回 通配符以后的，都归这段处理
 			// /a/b/c -> 归 /a/b/*
-			if root.typ == nodeTypeAny {
-				mi.n = root
+			if cur.typ == nodeTypeAny {
+				mi.n = cur
+				mi.mdls = r.findMdls(cur, segments)
 				return mi, true
 			}
 			return nil, false
@@ -102,9 +106,9 @@ func (r *router) findRoute(method string, path string) (*matchInfo, bool) {
 		if child.paramName != "" {
 			mi.addValue(child.paramName, s)
 		}
-		root = child
+		cur = child
 	}
-	mi.n = root
+	mi.n = cur
 	// 将这条路径上所有可能的 middlewares 一并返回
 	mi.mdls = r.findMdls(root, segments)
 
@@ -123,7 +127,7 @@ func (r *router) findMdls(root *node, segs []string) []Middleware {
 				res = append(res, cur.mdls...)
 			}
 			// 这里将下一层的所有可能的 子节点都找到
-			children = append(children, root.childrenOf(seg)...)
+			children = append(children, cur.childrenOf(seg)...)
 		}
 		// 当遍历下一段路由的时候， 将上一段收集的所有子节点赋值给队列
 		queue = children
