@@ -10,7 +10,7 @@ func TestMiddlewareBuilder_Builder(t *testing.T) {
 	builder := MiddlewareBuilder{
 		StatusCode: 500,
 		Data:       []byte("panic 了"),
-		Log: func(ctx *kyuu.Context, err any) {
+		LogFunc: func(ctx *kyuu.Context, err any) {
 			fmt.Printf("panic 路径: %s", ctx.Req.URL.String())
 		},
 	}
