@@ -11,6 +11,8 @@ type HandleFunc func(ctx *Context)
 // 确保 HTTPServer 肯定实现了 Server 接口
 var _ Server = (*HTTPServer)(nil)
 
+type HTTPServerOption func(server *HTTPServer)
+
 // Server is the interface that wraps the basic ServeHTTP method.
 // here is the interface of core API
 type Server interface {
@@ -39,12 +41,26 @@ type Server interface {
 type HTTPServer struct {
 	// addr string 创建的时候传递，而不是 Start 接收。这个都是可以的
 	router
-	mdls []Middleware
+	mdls      []Middleware
+	tplEngine TemplateEngine
 }
 
-func NewHTTPServer() *HTTPServer {
-	return &HTTPServer{
+func NewHTTPServer(opts ...HTTPServerOption) *HTTPServer {
+	s := &HTTPServer{
 		router: newRouter(),
+	}
+
+	// 不是核心逻辑，无需在 server interface 中实现，放在 struct 就可以
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	return s
+}
+
+func ServerWithTemplateEngine(tplEngine TemplateEngine) HTTPServerOption {
+	return func(server *HTTPServer) {
+		server.tplEngine = tplEngine
 	}
 }
 
@@ -72,6 +88,8 @@ func (s *HTTPServer) ServeHTTP(writer http.ResponseWriter, request *http.Request
 	ctx := &Context{
 		Req:  request,
 		Resp: writer,
+		// 将 template engine 实例到 ctx 中
+		tplEngine: s.tplEngine,
 	}
 
 	// Middleware 和 serve 一起的时候， HTTPServer 执行路由匹配，应该是最后一个，最后一个执行用户的逻辑

@@ -29,6 +29,9 @@ type Context struct {
 
 	// 命中的路由
 	MatchedRoute string
+
+	// 通过 ctx 将 template engine 传递下去
+	tplEngine TemplateEngine
 }
 
 func (c *Context) BindJSON(val any) error {
@@ -48,6 +51,20 @@ func (c *Context) BindJSON(val any) error {
 	// JSON 里面额外多了一个 Age 字段，那么就会报错
 	// decoder.DisallowUnknownFields()
 	return decoder.Decode(val)
+}
+
+func (c *Context) Render(tplName string, data any) error {
+	// 不要这样子去做
+	// tplName = tplName + ".gohtml"
+	// tplName = tplName + c.tplPrefix
+	var err error
+	c.RespData, err = c.tplEngine.Render(c.Req.Context(), tplName, data)
+	if err != nil {
+		c.RespStatusCode = http.StatusInternalServerError
+		return err
+	}
+	c.RespStatusCode = http.StatusOK
+	return nil
 }
 
 // FormValue returns the first value for the named component of the query.
