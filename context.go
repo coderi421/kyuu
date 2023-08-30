@@ -96,6 +96,13 @@ func (c *Context) QueryValue(key string) StringValue {
 	// 还是没有值
 	// return c.queryValues.Get(key), nil
 }
+func (c *Context) PathValue(key string) StringValue {
+	val, ok := c.PathParams[key]
+	if !ok {
+		return StringValue{err: errors.New("web: 找不到这个 key")}
+	}
+	return StringValue{val: val}
+}
 
 func (c *Context) SetCookie(cookie *http.Cookie) {
 	http.SetCookie(c.Resp, cookie)
@@ -123,7 +130,15 @@ type StringValue struct {
 	err      error
 }
 
-func (s *StringValue) ToInt64() (int64, error) {
+func (s StringValue) String() (string, error) {
+	return s.val, s.err
+}
+
+func (s StringValue) StringMultiVal() ([]string, error) {
+	return s.multiVal, s.err
+}
+
+func (s StringValue) ToInt64() (int64, error) {
 	if s.err != nil {
 		return 0, s.err
 	}
