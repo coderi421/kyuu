@@ -3,6 +3,7 @@ module github.com/coderi421/kyuu
 go 1.19
 
 require (
+	github.com/hashicorp/golang-lru v1.0.2
 	github.com/prometheus/client_golang v1.16.0
 	github.com/stretchr/testify v1.8.4
 	go.opentelemetry.io/otel v1.16.0
