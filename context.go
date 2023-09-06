@@ -32,6 +32,13 @@ type Context struct {
 
 	// 通过 ctx 将 template engine 传递下去
 	tplEngine TemplateEngine
+
+	// 用户可以自由决定在这里存储什么，
+	// 主要用于解决在不同 Middleware 之间数据传递的问题
+	// 但是要注意
+	// 1. UserValues 在初始状态的时候总是 nil，你需要自己手动初始化
+	// 懒汉模式 => 在第一次使用的时候初始化
+	UserValues map[string]any
 }
 
 func (c *Context) BindJSON(val any) error {
