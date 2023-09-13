@@ -15,6 +15,7 @@ type Manager struct {
 // If successful, it caches the Session instance in the UserValues of the context.
 func (m *Manager) GetSession(ctx *kyuu.Context) (Session, error) {
 	// Create UserValues map if it doesn't exist
+	// Transfer data between middlewares
 	if ctx.UserValues == nil {
 		ctx.UserValues = make(map[string]interface{}, 1)
 	}
