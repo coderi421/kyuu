@@ -8,7 +8,7 @@ import (
 type Manager struct {
 	Store
 	Propagator
-	SessCtxKey string
+	SessCtxKey string // 在 context 中的备份，方便使用
 }
 
 // GetSession attempts to retrieve the Session from the context.
