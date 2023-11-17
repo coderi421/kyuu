@@ -33,6 +33,7 @@ func (c Column) EQ(arg any) Predicate {
 	}
 }
 
+// LT 例如 C("id").LT(12)
 func (c Column) LT(arg any) Predicate {
 	return Predicate{
 		left:  c,
