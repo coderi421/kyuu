@@ -3,6 +3,7 @@ package orm
 import (
 	"github.com/coderi421/kyuu/orm/internal/errs"
 	"reflect"
+	"strings"
 	"sync"
 	"unicode"
 )
@@ -37,7 +38,7 @@ func (r *registry) get(val any) (*model, error) {
 	if !ok {
 		// If the model is not found, parse it
 		var err error
-		if m, err = r.parseModel(typ); err != nil {
+		if m, err = r.parseModel(val); err != nil {
 			return nil, err
 		}
 	}
@@ -90,7 +91,11 @@ func (r *registry) get(val any) (*model, error) {
 // parseModel parses a given reflect.Type and returns a new model or an error.
 // It checks if the type is a pointer to a struct and generates a map of field names
 // and their corresponding column names for the model.
-func (r *registry) parseModel(typ reflect.Type) (*model, error) {
+// orm:"key1=value1,key2=value2"
+func (r *registry) parseModel(val any) (*model, error) {
+	// Get the type of the input value
+	typ := reflect.TypeOf(val)
+
 	// Check if the type is a pointer to a struct
 	if typ.Kind() != reflect.Ptr || typ.Elem().Kind() != reflect.Struct {
 		// Only support one-level pointer as input, e.g. *User does not support **User and User
@@ -102,24 +107,82 @@ func (r *registry) parseModel(typ reflect.Type) (*model, error) {
 
 	// Get the number of fields in the struct
 	numField := typ.NumField()
+
+	// Create a map to store the field names and their corresponding column names
 	fds := make(map[string]*field, numField)
+
+	// Iterate over each field in the struct
 	for i := 0; i < numField; i++ {
-		// Get the struct of each field
+		// Get the reflect.StructField of the current field
 		fdStruct := typ.Field(i)
+
+		// Process the tag of the field
+		tags, err := r.parseTag(fdStruct.Tag)
+		if err != nil {
+			return nil, err
+		}
+
+		// Get the column name from the tag or use the default field name
+		colName := tags[tagKeyColumn]
+		if colName == "" {
+			colName = underscoreName(fdStruct.Name)
+		}
+
+		// Store the field's column name in the map
 		fds[fdStruct.Name] = &field{
-			colName: underscoreName(fdStruct.Name),
+			colName: colName,
 		}
 	}
 
+	// Get the table name from the input value if it implements TableName interface
+	var tableName string
+	if tn, ok := val.(TableName); ok {
+		tableName = tn.TableName()
+	}
+	// If the table name is not provided, generate it from the struct name
+	if tableName == "" {
+		tableName = underscoreName(typ.Name())
+	}
+
+	// Create and return the model
 	return &model{
-		tableName: underscoreName(typ.Name()),
+		tableName: tableName,
 		fieldMap:  fds,
 	}, nil
+}
+
+// parseTag parses the given struct tag and returns a map of key-value pairs.
+// If the tag is empty, it returns an empty map and no error.
+// If the tag contains an invalid key-value pair, it returns an error.
+func (r *registry) parseTag(tag reflect.StructTag) (map[string]string, error) {
+	ormTag := tag.Get(tagORMName)
+	if ormTag == "" {
+		// Return an empty map so that the caller doesn't need to check for nil
+		return map[string]string{}, nil
+	}
+
+	// Initialize the result map with a capacity of 1, as we support only one key
+	res := make(map[string]string, 1)
+
+	// Split the tag string into individual key-value pairs
+	pairs := strings.Split(ormTag, ",")
+	for _, pair := range pairs {
+		// Split each pair into key and value
+		kv := strings.Split(pair, "=")
+		if len(kv) != 2 {
+			return nil, errs.NewErrInvalidTagContent(pair)
+		}
+		// Add the key-value pair to the result map
+		res[kv[0]] = kv[1]
+	}
+
+	return res, nil
 }
 
 // underscoreName converts a given table name to underscore case.
 // It replaces any uppercase letter with an underscore followed by the lowercase letter.
 // It returns the converted table name as a string.
+// UserName -> user_name
 func underscoreName(tableName string) string {
 	var buf []byte
 	for i, v := range tableName {

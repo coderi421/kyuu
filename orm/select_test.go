@@ -1,6 +1,7 @@
 package orm
 
 import (
+	"github.com/coderi421/kyuu/orm/internal/errs"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -91,6 +92,11 @@ func TestSelector_Build(t *testing.T) {
 				SQL:  "SELECT * FROM `test_model` WHERE  NOT (`age` > ?);",
 				Args: []any{18},
 			},
+		},
+		{
+			name:    "invalid column",
+			q:       NewSelector[TestModel](db).Where(Not(C("Invalid").GT(18))),
+			wantErr: errs.NewErrUnknownField("Invalid"),
 		},
 	}
 	for _, tt := range tests {

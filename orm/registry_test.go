@@ -63,6 +63,107 @@ func Test_registry_get(t *testing.T) {
 			val:     0,
 			wantErr: errs.ErrPointerOnly,
 		},
+
+		// 标签相关测试用例
+		{
+			name: "column tag",
+			val: func() any {
+				// 我们把测试结构体定义在方法内部，防止被其它用例访问
+				type ColumnTag struct {
+					ID uint64 `orm:"column=id"`
+				}
+				return &ColumnTag{}
+			}(),
+			wantModel: &model{
+				tableName: "column_tag",
+				fieldMap: map[string]*field{
+					"ID": {
+						colName: "id",
+					},
+				},
+			},
+		},
+		{
+			name: "empty column",
+			val: func() any {
+				type EmptyColumn struct {
+					FirstName uint64 `orm:"column=first_name"`
+				}
+				return &EmptyColumn{}
+			}(),
+			wantModel: &model{
+				tableName: "empty_column",
+				fieldMap: map[string]*field{
+					"FirstName": {
+						colName: "first_name",
+					},
+				},
+			},
+		},
+		{
+			name: "invalid tag",
+			val: func() any {
+				type InvalidTag struct {
+					FirstName uint64 `orm:"column"`
+				}
+				return &InvalidTag{}
+			}(),
+			wantErr: errs.NewErrInvalidTagContent("column"),
+		},
+		{
+			name: "ignore tag",
+			val: func() any {
+				type IgnoreTag struct {
+					FirstName uint64 `orm:"aaa=aaa"`
+				}
+				return &IgnoreTag{}
+			}(),
+			wantModel: &model{
+				tableName: "ignore_tag",
+				fieldMap: map[string]*field{
+					"FirstName": {
+						colName: "first_name",
+					},
+				},
+			},
+		},
+		// 利用接口自定义模型信息
+		{
+			name: "table name",
+			val:  &CustomTableName{},
+			wantModel: &model{
+				tableName: "custom_table_name_t",
+				fieldMap: map[string]*field{
+					"Name": {
+						colName: "name",
+					},
+				},
+			},
+		},
+		{
+			name: "table name ptr",
+			val:  &CustomTableNamePtr{},
+			wantModel: &model{
+				tableName: "custom_table_name_ptr_t",
+				fieldMap: map[string]*field{
+					"Name": {
+						colName: "name",
+					},
+				},
+			},
+		},
+		{
+			name: "empty table name",
+			val:  &EmptyTableName{},
+			wantModel: &model{
+				tableName: "empty_table_name",
+				fieldMap: map[string]*field{
+					"Name": {
+						colName: "name",
+					},
+				},
+			},
+		},
 	}
 
 	r := &registry{}
@@ -108,4 +209,28 @@ func Test_underscoreName(t *testing.T) {
 			assert.Equal(t, tc.wantStr, res)
 		})
 	}
+}
+
+type CustomTableName struct {
+	Name string
+}
+
+func (c CustomTableName) TableName() string {
+	return "custom_table_name_t"
+}
+
+type CustomTableNamePtr struct {
+	Name string
+}
+
+func (c *CustomTableNamePtr) TableName() string {
+	return "custom_table_name_ptr_t"
+}
+
+type EmptyTableName struct {
+	Name string
+}
+
+func (c *EmptyTableName) TableName() string {
+	return ""
 }
