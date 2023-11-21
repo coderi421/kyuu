@@ -1,19 +1,17 @@
 package orm
 
 import (
-	"database/sql"
+	"github.com/coderi421/kyuu/orm/internal/errs"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
-type TestModel struct {
-	Id        int64
-	FirstName string
-	Age       int8
-	LastName  *sql.NullString
-}
-
 func TestSelector_Build(t *testing.T) {
+	db, err := NewDB()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	type testCase struct {
 		name    string
 		q       QueryBuilder
@@ -23,77 +21,82 @@ func TestSelector_Build(t *testing.T) {
 	tests := []testCase{
 		{
 			name: "no from",
-			q:    NewSelector[TestModel](),
+			q:    NewSelector[TestModel](db),
 			want: &Query{
-				SQL: "SELECT * FROM `TestModel`;",
+				SQL: "SELECT * FROM `test_model`;",
 			},
 		},
 		{
 			name: "with from",
-			q:    NewSelector[TestModel]().From("`test_model`"),
+			q:    NewSelector[TestModel](db).From("`test_model`"),
 			want: &Query{
 				SQL: "SELECT * FROM `test_model`;",
 			},
 		},
 		{
 			name: "empty from",
-			q:    NewSelector[TestModel]().From(""),
+			q:    NewSelector[TestModel](db).From(""),
 			want: &Query{
-				SQL: "SELECT * FROM `TestModel`;",
+				SQL: "SELECT * FROM `test_model`;",
 			},
 		},
 		{
 			name: "with db",
-			q:    NewSelector[TestModel]().From("`test_db`.`test_model`"),
+			q:    NewSelector[TestModel](db).From("`test_db`.`test_model`"),
 			want: &Query{
 				SQL: "SELECT * FROM `test_db`.`test_model`;",
 			},
 		},
 		{
 			name: "single and simple predicate",
-			q:    NewSelector[TestModel]().From("`test_model`").Where(C("Id").EQ(1)),
+			q:    NewSelector[TestModel](db).From("`test_model`").Where(C("Id").EQ(1)),
 			want: &Query{
-				SQL:  "SELECT * FROM `test_model` WHERE `Id` = ?;",
+				SQL:  "SELECT * FROM `test_model` WHERE `id` = ?;",
 				Args: []any{1},
 			},
 		},
 		{
 			name: "multiple predicates",
-			q:    NewSelector[TestModel]().From("`test_model`").Where(C("Age").GT(11), C("Age").LT(13)),
+			q:    NewSelector[TestModel](db).From("`test_model`").Where(C("Age").GT(11), C("Age").LT(13)),
 			want: &Query{
-				SQL:  "SELECT * FROM `test_model` WHERE (`Age` > ?) AND (`Age` < ?);",
+				SQL:  "SELECT * FROM `test_model` WHERE (`age` > ?) AND (`age` < ?);",
 				Args: []any{11, 13},
 			},
 		},
 		{
 			// 使用 AND
 			name: "and",
-			q: NewSelector[TestModel]().
+			q: NewSelector[TestModel](db).
 				Where(C("Age").GT(18).And(C("Age").LT(35))),
 			want: &Query{
-				SQL:  "SELECT * FROM `TestModel` WHERE (`Age` > ?) AND (`Age` < ?);",
+				SQL:  "SELECT * FROM `test_model` WHERE (`age` > ?) AND (`age` < ?);",
 				Args: []any{18, 35},
 			},
 		},
 		{
 			// 使用 OR
 			name: "or",
-			q: NewSelector[TestModel]().
+			q: NewSelector[TestModel](db).
 				Where(C("Age").GT(18).Or(C("Age").LT(35))),
 			want: &Query{
-				SQL:  "SELECT * FROM `TestModel` WHERE (`Age` > ?) OR (`Age` < ?);",
+				SQL:  "SELECT * FROM `test_model` WHERE (`age` > ?) OR (`age` < ?);",
 				Args: []any{18, 35},
 			},
 		},
 		{
 			// 使用 NOT
 			name: "not",
-			q:    NewSelector[TestModel]().Where(Not(C("Age").GT(18))),
+			q:    NewSelector[TestModel](db).Where(Not(C("Age").GT(18))),
 			want: &Query{
 				// NOT 前面有两个空格，因为我们没有对 NOT 进行特殊处理
-				SQL:  "SELECT * FROM `TestModel` WHERE  NOT (`Age` > ?);",
+				SQL:  "SELECT * FROM `test_model` WHERE  NOT (`age` > ?);",
 				Args: []any{18},
 			},
+		},
+		{
+			name:    "invalid column",
+			q:       NewSelector[TestModel](db).Where(Not(C("Invalid").GT(18))),
+			wantErr: errs.NewErrUnknownField("Invalid"),
 		},
 	}
 	for _, tt := range tests {

@@ -1,21 +1,27 @@
 package orm
 
 import (
-	"fmt"
-	"reflect"
+	"github.com/coderi421/kyuu/orm/internal/errs"
 	"strings"
 )
 
+// Selector represents a query selector that allows building SQL SELECT statements.
+// It holds the necessary information to construct the query.
 type Selector[T any] struct {
-	sb    strings.Builder
-	args  []any
-	table string
-	where []Predicate
+	sb    strings.Builder // sb is used to build the SQL query string.
+	args  []any           // args holds the arguments for the query.
+	table string          // table is the name of the table to select from.
+	where []Predicate     // where holds the WHERE predicates for the query.
+	model *model          // model is the model associated with the selector.
+
+	db *DB // db is the DB instance used for executing the query.
 }
 
 // NewSelector creates a new instance of Selector.
-func NewSelector[T any]() *Selector[T] {
-	return &Selector[T]{}
+func NewSelector[T any](db *DB) *Selector[T] {
+	return &Selector[T]{
+		db: db,
+	}
 }
 
 // From sets the table name for the selector.
@@ -28,13 +34,22 @@ func (s *Selector[T]) From(tbl string) *Selector[T] {
 // Build generates a SQL query for selecting all columns from a table.
 // It returns the generated query as a *Query struct or an error if there was any.
 func (s *Selector[T]) Build() (*Query, error) {
+	var (
+		t   T
+		err error
+	)
+
+	s.model, err = s.db.r.get(&t)
+	if err != nil {
+		return nil, err
+	}
+
 	s.sb.WriteString("SELECT * FROM ")
 
 	if s.table == "" {
-		var t T
 		s.sb.WriteByte('`')
 		// Get the name of the struct using reflection
-		s.sb.WriteString(reflect.TypeOf(t).Name())
+		s.sb.WriteString(s.model.tableName)
 		s.sb.WriteByte('`')
 	} else {
 		// 这里没有处理 添加`符号，让用户自己应该名字自己在做什么
@@ -53,7 +68,7 @@ func (s *Selector[T]) Build() (*Query, error) {
 		}
 
 		// 递归处理 where 语句
-		if err := s.buildExpression(p); err != nil {
+		if err = s.buildExpression(p); err != nil {
 			return nil, err
 		}
 	}
@@ -80,8 +95,12 @@ func (s *Selector[T]) buildExpression(e Expression) error {
 
 	switch expr := e.(type) {
 	case Column:
+		fd, ok := s.model.fieldMap[expr.name]
+		if !ok {
+			return errs.NewErrUnknownField(expr.name)
+		}
 		s.sb.WriteByte('`')
-		s.sb.WriteString(expr.name)
+		s.sb.WriteString(fd.colName)
 		s.sb.WriteByte('`')
 	case value:
 		s.sb.WriteByte('?')
@@ -116,7 +135,7 @@ func (s *Selector[T]) buildExpression(e Expression) error {
 			s.sb.WriteByte(')')
 		}
 	default:
-		return fmt.Errorf("orm: 不支持的表达式 %v", expr)
+		return errs.NewErrUnsupportedExpressionType(expr)
 	}
 
 	return nil
