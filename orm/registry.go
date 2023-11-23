@@ -8,6 +8,11 @@ import (
 	"unicode"
 )
 
+type Registry interface {
+	Get(val any) (*Model, error)
+	Register(val any, opts ...ModelOpt) (*Model, error)
+}
+
 // 这种包变量对测试不友好，缺乏隔离
 //
 //	var defaultRegistry = &registry{
@@ -27,27 +32,25 @@ type registry struct {
 	models sync.Map
 }
 
-// get fetches the model associated with a given value.
+func NewRegistry() Registry {
+	return &registry{}
+}
+
+// Get fetches the model associated with a given value.
 // If the model is not found in the registry, it is parsed and stored for future use.
-func (r *registry) get(val any) (*model, error) {
+// Get 查找元数据模型
+func (r *registry) Get(val any) (*Model, error) {
 	// Get the type of the value
 	typ := reflect.TypeOf(val)
 
 	// Check if the model is already present in the registry
 	m, ok := r.models.Load(typ)
-	if !ok {
-		// If the model is not found, parse it
-		var err error
-		if m, err = r.parseModel(val); err != nil {
-			return nil, err
-		}
+	if ok {
+		return m.(*Model), nil
 	}
 
-	// Store the model in the registry
-	r.models.Store(typ, m)
-
 	// Return the model
-	return m.(*model), nil
+	return r.Register(val)
 }
 
 //var models = map[reflect.Type]*model{}
@@ -88,11 +91,37 @@ func (r *registry) get(val any) (*model, error) {
 // 	return m, nil
 // }
 
+// Register registers a model in the registry with the given options.
+// It parses the model if it is not found and applies the provided options.
+// It stores the model in the registry and returns the registered model.
+func (r *registry) Register(val any, opts ...ModelOpt) (*Model, error) {
+	// If the model is not found, parse it
+	m, err := r.parseModel(val)
+	if err != nil {
+		return nil, err
+	}
+
+	// Apply the provided options to the model
+	for _, opt := range opts {
+		err = opt(m)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	typ := reflect.TypeOf(val)
+
+	// Store the model in the registry
+	r.models.Store(typ, m)
+
+	return m, nil
+}
+
 // parseModel parses a given reflect.Type and returns a new model or an error.
 // It checks if the type is a pointer to a struct and generates a map of field names
 // and their corresponding column names for the model.
 // orm:"key1=value1,key2=value2"
-func (r *registry) parseModel(val any) (*model, error) {
+func (r *registry) parseModel(val any) (*Model, error) {
 	// Get the type of the input value
 	typ := reflect.TypeOf(val)
 
@@ -145,7 +174,7 @@ func (r *registry) parseModel(val any) (*model, error) {
 	}
 
 	// Create and return the model
-	return &model{
+	return &Model{
 		tableName: tableName,
 		fieldMap:  fds,
 	}, nil
