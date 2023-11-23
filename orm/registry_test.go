@@ -10,7 +10,7 @@ func Test_registry_get(t *testing.T) {
 	testCases := []struct {
 		name      string
 		val       any
-		wantModel *model
+		wantModel *Model
 		wantErr   error
 	}{
 		{
@@ -21,7 +21,7 @@ func Test_registry_get(t *testing.T) {
 		{
 			name: "pointer",
 			val:  &TestModel{},
-			wantModel: &model{
+			wantModel: &Model{
 				tableName: "test_model",
 				fieldMap: map[string]*field{
 					"Id": {
@@ -74,7 +74,7 @@ func Test_registry_get(t *testing.T) {
 				}
 				return &ColumnTag{}
 			}(),
-			wantModel: &model{
+			wantModel: &Model{
 				tableName: "column_tag",
 				fieldMap: map[string]*field{
 					"ID": {
@@ -87,11 +87,11 @@ func Test_registry_get(t *testing.T) {
 			name: "empty column",
 			val: func() any {
 				type EmptyColumn struct {
-					FirstName uint64 `orm:"column=first_name"`
+					FirstName uint64 `orm:"column="`
 				}
 				return &EmptyColumn{}
 			}(),
-			wantModel: &model{
+			wantModel: &Model{
 				tableName: "empty_column",
 				fieldMap: map[string]*field{
 					"FirstName": {
@@ -118,7 +118,7 @@ func Test_registry_get(t *testing.T) {
 				}
 				return &IgnoreTag{}
 			}(),
-			wantModel: &model{
+			wantModel: &Model{
 				tableName: "ignore_tag",
 				fieldMap: map[string]*field{
 					"FirstName": {
@@ -131,7 +131,7 @@ func Test_registry_get(t *testing.T) {
 		{
 			name: "table name",
 			val:  &CustomTableName{},
-			wantModel: &model{
+			wantModel: &Model{
 				tableName: "custom_table_name_t",
 				fieldMap: map[string]*field{
 					"Name": {
@@ -143,7 +143,7 @@ func Test_registry_get(t *testing.T) {
 		{
 			name: "table name ptr",
 			val:  &CustomTableNamePtr{},
-			wantModel: &model{
+			wantModel: &Model{
 				tableName: "custom_table_name_ptr_t",
 				fieldMap: map[string]*field{
 					"Name": {
@@ -155,7 +155,7 @@ func Test_registry_get(t *testing.T) {
 		{
 			name: "empty table name",
 			val:  &EmptyTableName{},
-			wantModel: &model{
+			wantModel: &Model{
 				tableName: "empty_table_name",
 				fieldMap: map[string]*field{
 					"Name": {
@@ -170,7 +170,7 @@ func Test_registry_get(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			m, err := r.get(tc.val)
+			m, err := r.Get(tc.val)
 			assert.Equal(t, tc.wantErr, err)
 			if err != nil {
 				return

@@ -12,7 +12,7 @@ type Selector[T any] struct {
 	args  []any           // args holds the arguments for the query.
 	table string          // table is the name of the table to select from.
 	where []Predicate     // where holds the WHERE predicates for the query.
-	model *model          // model is the model associated with the selector.
+	model *Model          // model is the model associated with the selector.
 
 	db *DB // db is the DB instance used for executing the query.
 }
@@ -39,7 +39,7 @@ func (s *Selector[T]) Build() (*Query, error) {
 		err error
 	)
 
-	s.model, err = s.db.r.get(&t)
+	s.model, err = s.db.r.Get(&t)
 	if err != nil {
 		return nil, err
 	}

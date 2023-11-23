@@ -57,7 +57,7 @@ func TestSelector_Build(t *testing.T) {
 		},
 		{
 			name: "multiple predicates",
-			q:    NewSelector[TestModel](db).From("`test_model`").Where(C("Age").GT(11), C("Age").LT(13)),
+			q:    NewSelector[TestModel](db).Where(C("Age").GT(11), C("Age").LT(13)),
 			want: &Query{
 				SQL:  "SELECT * FROM `test_model` WHERE (`age` > ?) AND (`age` < ?);",
 				Args: []any{11, 13},
