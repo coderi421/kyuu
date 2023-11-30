@@ -24,6 +24,7 @@ func (d *Deleter[T]) Build() (*Query, error) {
 		err error
 	)
 
+	// 从缓存中读取model
 	d.model, err = d.db.r.Get(&t)
 	if err != nil {
 		return nil, err
@@ -34,7 +35,7 @@ func (d *Deleter[T]) Build() (*Query, error) {
 	// If the table name is not provided, use the name of the T struct.
 	if d.table == "" {
 		d.sb.WriteByte('`')
-		d.sb.WriteString(d.model.tableName)
+		d.sb.WriteString(d.model.TableName)
 		d.sb.WriteByte('`')
 	} else {
 		d.sb.WriteString(d.table)
