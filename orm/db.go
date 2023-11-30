@@ -1,9 +1,11 @@
 package orm
 
+import "github.com/coderi421/kyuu/orm/model"
+
 type DBOption func(*DB)
 
 type DB struct {
-	r *registry
+	r model.Registry
 }
 
 // NewDB creates a new instance of DB with the provided options.
@@ -11,7 +13,7 @@ type DB struct {
 func NewDB(opts ...DBOption) (*DB, error) {
 	// Initialize a new DB instance with an empty registry.
 	db := &DB{
-		r: &registry{},
+		r: model.NewRegistry(),
 	}
 
 	// Apply each option to the DB instance.

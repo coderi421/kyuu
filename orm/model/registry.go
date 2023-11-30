@@ -1,4 +1,4 @@
-package orm
+package model
 
 import (
 	"github.com/coderi421/kyuu/orm/internal/errs"
@@ -10,7 +10,7 @@ import (
 
 type Registry interface {
 	Get(val any) (*Model, error)
-	Register(val any, opts ...ModelOpt) (*Model, error)
+	Register(val any, opts ...Option) (*Model, error)
 }
 
 // 这种包变量对测试不友好，缺乏隔离
@@ -94,7 +94,7 @@ func (r *registry) Get(val any) (*Model, error) {
 // Register registers a model in the registry with the given options.
 // It parses the model if it is not found and applies the provided options.
 // It stores the model in the registry and returns the registered model.
-func (r *registry) Register(val any, opts ...ModelOpt) (*Model, error) {
+func (r *registry) Register(val any, opts ...Option) (*Model, error) {
 	// If the model is not found, parse it
 	m, err := r.parseModel(val)
 	if err != nil {
@@ -118,7 +118,7 @@ func (r *registry) Register(val any, opts ...ModelOpt) (*Model, error) {
 }
 
 // parseModel parses a given reflect.Type and returns a new model or an error.
-// It checks if the type is a pointer to a struct and generates a map of field names
+// It checks if the type is a pointer to a struct and generates a map of Field names
 // and their corresponding column names for the model.
 // orm:"key1=value1,key2=value2"
 func (r *registry) parseModel(val any) (*Model, error) {
@@ -137,29 +137,29 @@ func (r *registry) parseModel(val any) (*Model, error) {
 	// Get the number of fields in the struct
 	numField := typ.NumField()
 
-	// Create a map to store the field names and their corresponding column names
-	fds := make(map[string]*field, numField)
+	// Create a map to store the Field names and their corresponding column names
+	fds := make(map[string]*Field, numField)
 
-	// Iterate over each field in the struct
+	// Iterate over each Field in the struct
 	for i := 0; i < numField; i++ {
-		// Get the reflect.StructField of the current field
+		// Get the reflect.StructField of the current Field
 		fdStruct := typ.Field(i)
 
-		// Process the tag of the field
+		// Process the tag of the Field
 		tags, err := r.parseTag(fdStruct.Tag)
 		if err != nil {
 			return nil, err
 		}
 
-		// Get the column name from the tag or use the default field name
+		// Get the column name from the tag or use the default Field name
 		colName := tags[tagKeyColumn]
 		if colName == "" {
 			colName = underscoreName(fdStruct.Name)
 		}
 
-		// Store the field's column name in the map
-		fds[fdStruct.Name] = &field{
-			colName: colName,
+		// Store the Field's column name in the map
+		fds[fdStruct.Name] = &Field{
+			ColName: colName,
 		}
 	}
 
@@ -175,8 +175,8 @@ func (r *registry) parseModel(val any) (*Model, error) {
 
 	// Create and return the model
 	return &Model{
-		tableName: tableName,
-		fieldMap:  fds,
+		TableName: tableName,
+		FieldMap:  fds,
 	}, nil
 }
 
@@ -228,4 +228,28 @@ func underscoreName(tableName string) string {
 		}
 	}
 	return string(buf)
+}
+
+// WithTableName is a Option function that sets the table name for a Model.
+func WithTableName(tableName string) Option {
+	return func(model *Model) error {
+		model.TableName = tableName
+		return nil
+	}
+}
+
+// ModelWithColumnName is a function that returns a Option function, which can be used to set the column name for a specific Field in a model.
+func WithColumnName(field, columnName string) Option {
+	return func(model *Model) error {
+		// Check if the Field exists in the model's Field map
+		fd, ok := model.FieldMap[field]
+		if !ok {
+			// Return an error if the Field is unknown
+			return errs.NewErrUnknownField(field)
+		}
+
+		// Set the column name for the Field
+		fd.ColName = columnName
+		return nil
+	}
 }

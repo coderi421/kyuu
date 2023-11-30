@@ -2,13 +2,14 @@ package orm
 
 import (
 	"github.com/coderi421/kyuu/orm/internal/errs"
+	"github.com/coderi421/kyuu/orm/model"
 	"strings"
 )
 
 type builder struct {
 	sb    strings.Builder // sb is used to build the SQL query string.
 	args  []any           // args holds the arguments for the query.
-	model *Model          // model is the model associated with the selector.
+	model *model.Model    // model is the model associated with the selector.
 }
 
 // type Predicates []Predicate
@@ -65,12 +66,12 @@ func (b *builder) buildExpression(e Expression) error {
 	switch expr := e.(type) {
 	case Column:
 		// Append column name to the SQL query
-		fd, ok := b.model.fieldMap[expr.name]
+		fd, ok := b.model.FieldMap[expr.name]
 		if !ok {
 			return errs.NewErrUnknownField(expr.name)
 		}
 		b.sb.WriteByte('`')
-		b.sb.WriteString(fd.colName)
+		b.sb.WriteString(fd.ColName)
 		b.sb.WriteByte('`')
 	case value:
 		// Append placeholder to the SQL query and add value to the argument list

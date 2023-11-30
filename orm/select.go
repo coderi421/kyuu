@@ -44,7 +44,7 @@ func (s *Selector[T]) Build() (*Query, error) {
 	if s.table == "" {
 		s.sb.WriteByte('`')
 		// Get the name of the struct using reflection
-		s.sb.WriteString(s.model.tableName)
+		s.sb.WriteString(s.model.TableName)
 		s.sb.WriteByte('`')
 	} else {
 		// 这里没有处理 添加`符号，让用户自己应该名字自己在做什么

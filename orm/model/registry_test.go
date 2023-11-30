@@ -1,6 +1,7 @@
-package orm
+package model
 
 import (
+	"database/sql"
 	"github.com/coderi421/kyuu/orm/internal/errs"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -22,19 +23,19 @@ func Test_registry_get(t *testing.T) {
 			name: "pointer",
 			val:  &TestModel{},
 			wantModel: &Model{
-				tableName: "test_model",
-				fieldMap: map[string]*field{
+				TableName: "test_model",
+				FieldMap: map[string]*Field{
 					"Id": {
-						colName: "id",
+						ColName: "id",
 					},
 					"FirstName": {
-						colName: "first_name",
+						ColName: "first_name",
 					},
 					"Age": {
-						colName: "age",
+						ColName: "age",
 					},
 					"LastName": {
-						colName: "last_name",
+						ColName: "last_name",
 					},
 				},
 			},
@@ -75,10 +76,10 @@ func Test_registry_get(t *testing.T) {
 				return &ColumnTag{}
 			}(),
 			wantModel: &Model{
-				tableName: "column_tag",
-				fieldMap: map[string]*field{
+				TableName: "column_tag",
+				FieldMap: map[string]*Field{
 					"ID": {
-						colName: "id",
+						ColName: "id",
 					},
 				},
 			},
@@ -92,10 +93,10 @@ func Test_registry_get(t *testing.T) {
 				return &EmptyColumn{}
 			}(),
 			wantModel: &Model{
-				tableName: "empty_column",
-				fieldMap: map[string]*field{
+				TableName: "empty_column",
+				FieldMap: map[string]*Field{
 					"FirstName": {
-						colName: "first_name",
+						ColName: "first_name",
 					},
 				},
 			},
@@ -119,10 +120,10 @@ func Test_registry_get(t *testing.T) {
 				return &IgnoreTag{}
 			}(),
 			wantModel: &Model{
-				tableName: "ignore_tag",
-				fieldMap: map[string]*field{
+				TableName: "ignore_tag",
+				FieldMap: map[string]*Field{
 					"FirstName": {
-						colName: "first_name",
+						ColName: "first_name",
 					},
 				},
 			},
@@ -132,10 +133,10 @@ func Test_registry_get(t *testing.T) {
 			name: "table name",
 			val:  &CustomTableName{},
 			wantModel: &Model{
-				tableName: "custom_table_name_t",
-				fieldMap: map[string]*field{
+				TableName: "custom_table_name_t",
+				FieldMap: map[string]*Field{
 					"Name": {
-						colName: "name",
+						ColName: "name",
 					},
 				},
 			},
@@ -144,10 +145,10 @@ func Test_registry_get(t *testing.T) {
 			name: "table name ptr",
 			val:  &CustomTableNamePtr{},
 			wantModel: &Model{
-				tableName: "custom_table_name_ptr_t",
-				fieldMap: map[string]*field{
+				TableName: "custom_table_name_ptr_t",
+				FieldMap: map[string]*Field{
 					"Name": {
-						colName: "name",
+						ColName: "name",
 					},
 				},
 			},
@@ -156,10 +157,10 @@ func Test_registry_get(t *testing.T) {
 			name: "empty table name",
 			val:  &EmptyTableName{},
 			wantModel: &Model{
-				tableName: "empty_table_name",
-				fieldMap: map[string]*field{
+				TableName: "empty_table_name",
+				FieldMap: map[string]*Field{
 					"Name": {
-						colName: "name",
+						ColName: "name",
 					},
 				},
 			},
@@ -233,4 +234,93 @@ type EmptyTableName struct {
 
 func (c *EmptyTableName) TableName() string {
 	return ""
+}
+
+func TestWithTableName(t *testing.T) {
+	testCases := []struct {
+		name          string
+		val           any
+		opt           Option
+		wantTableName string
+		wantErr       error
+	}{
+		{
+			name:          "empty string",
+			val:           &TestModel{},
+			opt:           WithTableName(""),
+			wantTableName: "",
+		},
+		{
+			name:          "table name",
+			val:           &TestModel{},
+			opt:           WithTableName("test_model_t"),
+			wantTableName: "test_model_t",
+		},
+	}
+
+	r := NewRegistry()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			m, err := r.Register(tc.val, tc.opt)
+			assert.Equal(t, tc.wantErr, err)
+			if err != nil {
+				return
+			}
+			assert.Equal(t, tc.wantTableName, m.TableName)
+		})
+	}
+}
+
+type TestModel struct {
+	Id        int64
+	FirstName string
+	Age       int8
+	LastName  *sql.NullString
+}
+
+func TestWithColumnName(t *testing.T) {
+	testCases := []struct {
+		name        string
+		val         any
+		opt         Option
+		field       string
+		wantColName string
+		wantErr     error
+	}{
+		{
+			name:        "new name",
+			val:         &TestModel{},
+			opt:         WithColumnName("FirstName", "first_name_new"),
+			field:       "FirstName",
+			wantColName: "first_name_new",
+		},
+		{
+			name:        "empty new name",
+			val:         &TestModel{},
+			opt:         WithColumnName("FirstName", ""),
+			field:       "FirstName",
+			wantColName: "",
+		},
+		{
+			// 不存在的字段
+			name:    "invalid Field name",
+			val:     &TestModel{},
+			opt:     WithColumnName("FirstNameXXX", "first_name"),
+			field:   "FirstNameXXX",
+			wantErr: errs.NewErrUnknownField("FirstNameXXX"),
+		},
+	}
+
+	r := NewRegistry().(*registry)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			m, err := r.Register(tc.val, tc.opt)
+			assert.Equal(t, tc.wantErr, err)
+			if err != nil {
+				return
+			}
+			fd := m.FieldMap[tc.field]
+			assert.Equal(t, tc.wantColName, fd.ColName)
+		})
+	}
 }
