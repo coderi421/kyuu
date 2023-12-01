@@ -1,0 +1,70 @@
+package unsafe
+
+import (
+	"errors"
+	"reflect"
+	"unsafe"
+)
+
+// UnsafeAccessor 使用 unsafe 通过操作内存地址的方式，实现读取/修改值
+type UnsafeAccessor struct {
+	fields  map[string]FieldMeta
+	address unsafe.Pointer
+}
+
+func NewUnsafeAccessor(entity any) *UnsafeAccessor {
+	typ := reflect.TypeOf(entity)
+	typ = typ.Elem()
+	numField := typ.NumField()
+	fields := make(map[string]FieldMeta, numField)
+	for i := 0; i < numField; i++ {
+		fd := typ.Field(i)
+		fields[fd.Name] = FieldMeta{
+			Offset: fd.Offset,
+			typ:    fd.Type,
+		}
+	}
+	val := reflect.ValueOf(entity)
+	return &UnsafeAccessor{
+		fields:  fields,
+		address: val.UnsafePointer(),
+	}
+}
+
+func (a *UnsafeAccessor) Field(field string) (any, error) {
+	// 起始地址 + 字段偏移量
+	fd, ok := a.fields[field]
+	if !ok {
+		return nil, errors.New("非法字段")
+	}
+	// 字段起始地址
+	fdAddress := unsafe.Pointer(uintptr(a.address) + fd.Offset)
+	// 如果知道类型，就这么读
+	// return *(*int)(fdAddress), nil
+
+	// 不知道确切类型
+	return reflect.NewAt(fd.typ, fdAddress).Elem().Interface(), nil
+}
+
+func (a *UnsafeAccessor) SetField(field string, val any) error {
+	// 起始地址 + 字段偏移量
+	fd, ok := a.fields[field]
+	if !ok {
+		return errors.New("非法字段")
+	}
+	// 字段起始地址
+	// 使用 unsafe.Pointer 设定值，而不是 uintptr 是因为，GC 后 uintptr 的值就不准了，而 go system 会委会 unsafe.Pointer
+	fdAddress := unsafe.Pointer(uintptr(a.address) + fd.Offset)
+
+	// 你知道确切类型就这么写
+	// *(*int)(fdAddress) = val.(int)
+
+	// 你不知道确切类型
+	reflect.NewAt(fd.typ, fdAddress).Elem().Set(reflect.ValueOf(val))
+	return nil
+}
+
+type FieldMeta struct {
+	Offset uintptr
+	typ    reflect.Type
+}

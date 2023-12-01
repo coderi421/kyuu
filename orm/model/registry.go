@@ -137,12 +137,14 @@ func (r *registry) parseModel(val any) (*Model, error) {
 	// Get the number of fields in the struct
 	numField := typ.NumField()
 
-	// Create a map to store the Field names and their corresponding column names
+	// Create a map to store the Struct Field names and their corresponding column names
 	fds := make(map[string]*Field, numField)
+	// Create a map to store the DB names and their corresponding column names
+	colMap := make(map[string]*Field, numField)
 
 	// Iterate over each Field in the struct
 	for i := 0; i < numField; i++ {
-		// Get the reflect.StructField of the current Field
+		// Get the reflect.Struct Field of the current Field
 		fdStruct := typ.Field(i)
 
 		// Process the tag of the Field
@@ -154,13 +156,20 @@ func (r *registry) parseModel(val any) (*Model, error) {
 		// Get the column name from the tag or use the default Field name
 		colName := tags[tagKeyColumn]
 		if colName == "" {
+			// If the colName is "", user the default  ItemId -> item_id
 			colName = underscoreName(fdStruct.Name)
 		}
 
-		// Store the Field's column name in the map
-		fds[fdStruct.Name] = &Field{
+		f := &Field{
 			ColName: colName,
+			GoName:  fdStruct.Name,
+			Type:    fdStruct.Type,
+			Offset:  fdStruct.Offset, // offset within struct, in bytes
 		}
+		// Store the Struct Field's column name in the map
+		fds[fdStruct.Name] = f
+		// Store the DB's column name in the map
+		colMap[colName] = f
 	}
 
 	// Get the table name from the input value if it implements TableName interface
@@ -177,6 +186,7 @@ func (r *registry) parseModel(val any) (*Model, error) {
 	return &Model{
 		TableName: tableName,
 		FieldMap:  fds,
+		ColumnMap: colMap,
 	}, nil
 }
 

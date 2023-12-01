@@ -3,7 +3,9 @@ module github.com/coderi421/kyuu
 go 1.19
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.0
 	github.com/google/uuid v1.3.1
+	github.com/gotomicro/ekit v0.0.6
 	github.com/hashicorp/golang-lru v1.0.2
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/prometheus/client_golang v1.16.0
