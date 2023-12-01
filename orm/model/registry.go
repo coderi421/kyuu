@@ -164,7 +164,7 @@ func (r *registry) parseModel(val any) (*Model, error) {
 			ColName: colName,
 			GoName:  fdStruct.Name,
 			Type:    fdStruct.Type,
-			Offset:  fdStruct.Offset,
+			Offset:  fdStruct.Offset, // offset within struct, in bytes
 		}
 		// Store the Struct Field's column name in the map
 		fds[fdStruct.Name] = f

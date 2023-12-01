@@ -1,8 +1,9 @@
-package valuer
+package reflect
 
 import (
 	"database/sql"
 	"github.com/coderi421/kyuu/orm/internal/errs"
+	"github.com/coderi421/kyuu/orm/internal/valuer"
 	"github.com/coderi421/kyuu/orm/model"
 	"reflect"
 )
@@ -13,11 +14,11 @@ type reflectValue struct {
 	meta *model.Model
 }
 
-var _ Creator = NewReflectValue
+var _ valuer.Creator = NewReflectValue
 
 // NewReflectValue 返回一个封装好的，基于反射实现的 Value
 // 输入 val 必须是一个指向结构体实例的指针，而不能是任何其它类型
-func NewReflectValue(val interface{}, meta *model.Model) Value {
+func NewReflectValue(val interface{}, meta *model.Model) valuer.Value {
 	return &reflectValue{
 		val:  reflect.ValueOf(val).Elem(),
 		meta: meta,
