@@ -19,7 +19,7 @@ type Field struct {
 	GoName  string       // go struct 中的名字
 	Type    reflect.Type // go 中的数据类型，转换成 reflect.Value 的时候，知道是什么类型，不然那没法转
 	// Offset 相对于对象起始地址的字段偏移量
-	// uintptr 这个类型的值，只是简单记录一下位置
+	// uintptr 这个类型的值，只是记录相对位置
 	Offset uintptr
 }
 

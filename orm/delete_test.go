@@ -6,10 +6,7 @@ import (
 )
 
 func TestDeleter_Build(t *testing.T) {
-	db, err := NewDB()
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := memoryDB(t)
 
 	testCases := []struct {
 		name      string
