@@ -7,6 +7,7 @@ require (
 	github.com/google/uuid v1.3.1
 	github.com/gotomicro/ekit v0.0.6
 	github.com/hashicorp/golang-lru v1.0.2
+	github.com/mattn/go-sqlite3 v1.14.15
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/prometheus/client_golang v1.16.0
 	github.com/redis/go-redis/v9 v9.1.0
