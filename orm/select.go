@@ -136,8 +136,20 @@ func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 	if err != nil {
 		return nil, err
 	}
+	//var tps []*T
+	// 初始化 tp
+
 	for rows.Next() {
+		//tp := new(T)
+		//meta, e := s.db.r.Get(tp)
+		//if e != nil {
+		//	return nil, e
+		//}
+		//// 开始进行映射 db table 和 struct 的关系
+		//val := s.db.valCreator(tp, meta)
+		//tps = append(tps, new(T))
 		// 在这里构造 []*T
+
 	}
 
 	return nil, nil

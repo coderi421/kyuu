@@ -2,9 +2,12 @@ package orm
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/coderi421/kyuu/orm/internal/errs"
+	"github.com/coderi421/kyuu/orm/internal/valuer/reflect"
+	"github.com/coderi421/kyuu/orm/internal/valuer/unsafe"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -134,24 +137,70 @@ func TestSelector_Get(t *testing.T) {
 		wantVal  *TestModel
 	}{
 		{
+			// 查询返回错误
 			name:    "query error",
 			mockErr: errors.New("invalid query"),
 			wantErr: errors.New("invalid query"),
 			query:   "SELECT .*",
 		},
+		{
+			name:     "no row",
+			query:    "SELECT .*",
+			mockRows: sqlmock.NewRows([]string{"id"}),
+			wantErr:  ErrNoRows,
+		},
+		{
+			// 数据库返回的列过多，struct 对应的列过少
+			name:    "return too many column",
+			wantErr: errs.ErrTooManyReturnedColumns,
+			query:   "SELECT .*",
+			mockRows: func() *sqlmock.Rows {
+				res := sqlmock.NewRows([]string{"id", "first_name", "age", "last_name", "extra_column"})
+				res.AddRow([]byte("1"), []byte("Da"), []byte("18"), []byte("Ming"), []byte("nothing"))
+				return res
+			}(),
+		},
+		{
+			name:  "get data",
+			query: "SELECT .*",
+			mockRows: func() *sqlmock.Rows {
+				res := sqlmock.NewRows([]string{"id", "first_name", "age", "last_name"})
+				res.AddRow([]byte("1"), []byte("Da"), []byte("18"), []byte("Ming"))
+				return res
+			}(),
+			wantVal: &TestModel{
+				Id:        1,
+				FirstName: "Da",
+				Age:       18,
+				LastName: &sql.NullString{
+					String: "Ming",
+					Valid:  true,
+				},
+			},
+		},
 	}
 
-	for _, tc := range testCases {
-		exp := mock.ExpectQuery(tc.query)
-		if tc.mockErr != nil {
-			exp.WillReturnError(tc.mockErr)
-		} else {
-			exp.WillReturnRows(tc.mockRows)
-		}
-	}
+	//for _, tc := range testCases {
+	//
+	//	exp := mock.ExpectQuery(tc.query)
+	//	if tc.mockErr != nil {
+	//		exp.WillReturnError(tc.mockErr)
+	//	} else {
+	//		exp.WillReturnRows(tc.mockRows)
+	//	}
+	//
+	//}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+
+			exp := mock.ExpectQuery(tc.query)
+			if tc.mockErr != nil {
+				exp.WillReturnError(tc.mockErr)
+			} else {
+				exp.WillReturnRows(tc.mockRows)
+			}
+
 			res, err1 := NewSelector[TestModel](db).Get(context.Background())
 			assert.Equal(t, tc.wantErr, err1)
 			if err1 != nil {
@@ -165,11 +214,55 @@ func TestSelector_Get(t *testing.T) {
 // 在 orm 目录下执行
 // go test -bench=BenchmarkQuerier_Get -benchmem -benchtime=10000x
 // 我的输出结果
-// goos: linux
-// goarch: amd64
-// pkg: gitee.com/geektime-geekbang/geektime-go/orm
-// cpu: Intel(R) Core(TM) i5-10400F CPU @ 2.90GHz
-// BenchmarkQuerier_Get/unsafe-12             10000            453677 ns/op            3246 B/op        108 allocs/op
-// BenchmarkQuerier_Get/reflect-12            10000           1173199 ns/op            3427 B/op        117 allocs/op
-// PASS
-// ok      gitee.com/geektime-geekbang/geektime-go/orm     16.324s
+//goos: windows
+//goarch: amd64
+//pkg: github.com/coderi421/kyuu/orm
+//cpu: 11th Gen Intel(R) Core(TM) i5-11400 @ 2.60GHz
+//BenchmarkQuerier_Get/unsafe-12             10000            220244 ns/op            3399 B/op        111 allocs/op
+//BenchmarkQuerier_Get/reflect-12            10000            743207 ns/op            3581 B/op        120 allocs/op
+//PASS
+//ok      github.com/coderi421/kyuu/orm   11.026s
+
+func BenchmarkQuerier_Get(b *testing.B) {
+	db, err := Open("sqlite3", "file:benchmark_get.db?cache=shared&mode=memory")
+	if err != nil {
+		b.Fatal(err)
+	}
+	_, err = db.db.Exec(TestModel{}.CreateSQL())
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	res, err := db.db.Exec("INSERT INTO `test_model`(`id`,`first_name`,`age`,`last_name`) VALUES (?,?,?,?)", 12, "Tom", 18, "Jerry")
+	if err != nil {
+		b.Fatal(err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		b.Fatal(err)
+	}
+	if affected == 0 {
+		b.Fatal()
+	}
+
+	b.ResetTimer()
+	b.Run("unsafe", func(b *testing.B) {
+		db.valCreator = unsafe.NewUnsafeValue
+		for i := 0; i < b.N; i++ {
+			_, err = NewSelector[TestModel](db).Get(context.Background())
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("reflect", func(b *testing.B) {
+		db.valCreator = reflect.NewReflectValue
+		for i := 0; i < b.N; i++ {
+			_, err = NewSelector[TestModel](db).Get(context.Background())
+			if err != nil {
+				b.Fatal()
+			}
+		}
+	})
+}
