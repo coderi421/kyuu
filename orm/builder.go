@@ -76,7 +76,18 @@ func (b *builder) buildExpression(e Expression) error {
 	case value:
 		// Append placeholder to the SQL query and add value to the argument list
 		b.sb.WriteByte('?')
-		b.args = append(b.args, expr.val)
+		//b.args = append(b.args, expr.val)
+		b.addArgs(expr.val)
+	case RawExpr:
+		// 执行原生 sql 语句
+		b.sb.WriteString(expr.raw)
+		if len(expr.args) != 0 {
+			b.addArgs(expr.args...)
+			//if b.args == nil {
+			//	b.args = make([]any, 0, 8)
+			//}
+			//b.args = append(b.args, expr.args...)
+		}
 	case Predicate:
 		// Build left expression
 		// 如果左边有复杂结构，则在最外边套一层括号
@@ -89,6 +100,11 @@ func (b *builder) buildExpression(e Expression) error {
 		}
 		if lp {
 			b.sb.WriteByte(')')
+		}
+
+		if expr.op == "" {
+			// 如果只有左边（op 符号为空，就不需要连接），例如执行原生 sql raw 的时候，就只有左边
+			return nil
 		}
 
 		//处理运算符号
@@ -114,4 +130,11 @@ func (b *builder) buildExpression(e Expression) error {
 	}
 
 	return nil
+}
+
+func (b *builder) addArgs(args ...any) {
+	if b.args == nil {
+		b.args = make([]any, 0, 8)
+	}
+	b.args = append(b.args, args...)
 }
