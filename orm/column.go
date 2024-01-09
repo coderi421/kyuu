@@ -3,10 +3,19 @@ package orm
 // 只拼接 where 中的 一组条件
 
 type Column struct {
-	name string
+	name  string
+	alias string // as 别名
 }
 
-func (c Column) expr() {}
+func (c Column) expr()       {}
+func (c Column) selectable() {}
+
+func (c Column) As(alias string) Column {
+	return Column{
+		name:  c.name,
+		alias: alias,
+	}
+}
 
 type value struct {
 	val any

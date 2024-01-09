@@ -12,6 +12,82 @@ import (
 	"testing"
 )
 
+func TestSelector_Select(t *testing.T) {
+	db := memoryDB(t)
+	testCases := []struct {
+		name      string
+		q         QueryBuilder
+		wantQuery *Query
+		wantErr   error
+	}{
+		{
+			// 没有指定
+			name: "all",
+			q:    NewSelector[TestModel](db),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM `test_model`;",
+			},
+		},
+		{
+			name:    "invalid column",
+			q:       NewSelector[TestModel](db).Select(Avg("invalid")),
+			wantErr: errs.NewErrUnknownField("invalid"),
+		},
+		{
+			name: "partial columns",
+			q:    NewSelector[TestModel](db).Select(C("Id"), C("FirstName")),
+			wantQuery: &Query{
+				SQL: "SELECT `id`,`first_name` FROM `test_model`;",
+			},
+		},
+		{
+			name: "avg",
+			q:    NewSelector[TestModel](db).Select(Avg("Age")),
+			wantQuery: &Query{
+				SQL: "SELECT AVG(`age`) FROM `test_model`;",
+			},
+		},
+		{
+			//  原生sql
+			name: "raw expression",
+			q:    NewSelector[TestModel](db).Select(Raw("COUNT(DISTINCT `first_name`)")),
+			wantQuery: &Query{
+				SQL: "SELECT COUNT(DISTINCT `first_name`) FROM `test_model`;",
+			},
+		},
+		{
+			// 别名
+			name: "alias",
+			q:    NewSelector[TestModel](db).Select(C("Id").As("my_id"), Avg("Age").As("avg_age")),
+			wantQuery: &Query{
+				SQL: "SELECT `id` AS `my_id`,AVG(`age`) AS `avg_age` FROM `test_model`;",
+			},
+		},
+		{
+			// WHERE 忽略别名
+			name: "where ignore alias",
+			q:    NewSelector[TestModel](db).Where(C("Id").As("my_id").LT(100)),
+			wantQuery: &Query{
+				SQL:  "SELECT * FROM `test_model` WHERE `id` < ?;",
+				Args: []any{100},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			query, err := tc.q.Build()
+			assert.Equal(t, tc.wantErr, err)
+			if err != nil {
+				return
+			}
+			assert.Equal(t, tc.wantQuery, query)
+		})
+
+	}
+
+}
+
 func TestSelector_Build(t *testing.T) {
 	db := memoryDB(t)
 
@@ -97,9 +173,19 @@ func TestSelector_Build(t *testing.T) {
 			},
 		},
 		{
+			// 非法列
 			name:    "invalid column",
 			q:       NewSelector[TestModel](db).Where(Not(C("Invalid").GT(18))),
 			wantErr: errs.NewErrUnknownField("Invalid"),
+		},
+		{
+			// 使用 RawExpr
+			name: "raw expression",
+			q:    NewSelector[TestModel](db).Where(Raw("`age` < ?", 18).AsPredicate()),
+			want: &Query{
+				SQL:  "SELECT * FROM `test_model` WHERE `age` < ?;",
+				Args: []any{18},
+			},
 		},
 	}
 	for _, tt := range tests {
