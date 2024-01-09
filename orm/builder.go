@@ -65,14 +65,14 @@ func (b *builder) buildExpression(e Expression) error {
 
 	switch expr := e.(type) {
 	case Column:
+		// 这种写法很隐晦
+		//expr.alias = ""
 		// Append column name to the SQL query
-		fd, ok := b.model.FieldMap[expr.name]
-		if !ok {
-			return errs.NewErrUnknownField(expr.name)
-		}
-		b.sb.WriteByte('`')
-		b.sb.WriteString(fd.ColName)
-		b.sb.WriteByte('`')
+		// WHERE 中的条件 不允许用别名
+		return b.buildColumn(expr)
+	case Aggregate:
+		//ex. HAVING AVG(`age`) = ?;
+		return b.buildAggregate(expr, false)
 	case value:
 		// Append placeholder to the SQL query and add value to the argument list
 		b.sb.WriteByte('?')
@@ -132,9 +132,48 @@ func (b *builder) buildExpression(e Expression) error {
 	return nil
 }
 
+func (b *builder) buildColumn(c Column) error {
+	// 找到表中对应名字
+	fd, ok := b.model.FieldMap[c.name]
+	if !ok {
+		return errs.NewErrUnknownField(c.name)
+	}
+	b.sb.WriteByte('`')
+	b.sb.WriteString(fd.ColName)
+	b.sb.WriteByte('`')
+	// from 后的部分不需要 使用 as 别名
+	return nil
+}
+func (b *builder) buildAggregate(a Aggregate, useAlias bool) error {
+	// 找到表中对应名字
+	// 这里使用 ORM 的时候，默认使用 struct 的名字作为 column 检索字段
+	// for example: Id, Age 然后到内存中储存的 map 中找对应的表中的字段名称
+	fd, ok := b.model.FieldMap[a.arg]
+	if !ok {
+		return errs.NewErrUnknownField(a.arg)
+	}
+
+	b.sb.WriteString(a.fn)
+	b.sb.WriteString("(`")
+	b.sb.WriteString(fd.ColName)
+	b.sb.WriteString("`)")
+	if useAlias {
+		b.buildAs(a.alias)
+	}
+	return nil
+}
 func (b *builder) addArgs(args ...any) {
 	if b.args == nil {
 		b.args = make([]any, 0, 8)
 	}
 	b.args = append(b.args, args...)
+}
+
+func (b *builder) buildAs(alias string) {
+	if alias != "" {
+		b.sb.WriteString(" AS ")
+		b.sb.WriteByte('`')
+		b.sb.WriteString(alias)
+		b.sb.WriteByte('`')
+	}
 }

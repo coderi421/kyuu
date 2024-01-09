@@ -11,11 +11,15 @@ type Selector[T any] struct {
 	// select delete update insert 都需要使用
 	builder
 
-	table string      // table is the name of the table to select from.
-	where []Predicate // where holds the WHERE predicates for the query.
+	table  string      // table is the name of the table to select from.
+	where  []Predicate // where holds the WHERE predicates for the query.
+	having []Predicate
 
 	db      *DB // db is the DB instance used for executing the query.
 	columns []Selectable
+	groupBy []Column
+	offset  int
+	limit   int
 }
 
 // NewSelector creates a new instance of Selector.
@@ -79,6 +83,41 @@ func (s *Selector[T]) Build() (*Query, error) {
 		}
 	}
 
+	// 分组
+	if len(s.groupBy) > 0 {
+		s.sb.WriteString(" GROUP BY ")
+		for i, c := range s.groupBy {
+			if i > 0 {
+				s.sb.WriteByte(',')
+			}
+			if err = s.buildColumn(c, false); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// 筛选
+	if len(s.having) > 0 {
+		s.sb.WriteString(" HAVING ")
+		if err = s.buildPredicates(s.having); err != nil {
+			return nil, err
+		}
+	}
+
+	// 分页
+	if s.limit > 0 {
+		s.sb.WriteString(" LIMIT ?")
+		// 将 数值 作为参数追加进去
+		s.addArgs(s.limit)
+	}
+
+	// 偏移量
+	if s.offset > 0 {
+		s.sb.WriteString(" OFFSET ?")
+		// 将 数值 作为参数追加进去
+		s.addArgs(s.offset)
+	}
+
 	s.sb.WriteString(";")
 
 	return &Query{
@@ -100,28 +139,13 @@ func (s *Selector[T]) buildColumns() error {
 
 		switch val := c.(type) {
 		case Column:
-			s.sb.WriteByte('`')
-			// 找到表中对应名字
-			fd, ok := s.model.FieldMap[val.name]
-			if !ok {
-				return errs.NewErrUnknownField(val.name)
+			if err := s.buildColumn(val, true); err != nil {
+				return err
 			}
-			s.sb.WriteString(fd.ColName)
-			s.sb.WriteByte('`')
-			s.buildAs(val.alias)
 		case Aggregate:
-			s.sb.WriteString(val.fn)
-			s.sb.WriteString("(`")
-			// 找到表中对应名字
-			// 这里使用 ORM 的时候，默认使用 struct 的名字作为 column 检索字段
-			// for example: Id, Age 然后到内存中储存的 map 中找对应的表中的字段名称
-			fd, ok := s.model.FieldMap[val.arg]
-			if !ok {
-				return errs.NewErrUnknownField(val.arg)
+			if err := s.buildAggregate(val, true); err != nil {
+				return err
 			}
-			s.sb.WriteString(fd.ColName)
-			s.sb.WriteString("`)")
-			s.buildAs(val.alias)
 		case RawExpr:
 			s.sb.WriteString(val.raw)
 			if len(val.args) != 0 {
@@ -139,6 +163,27 @@ func (s *Selector[T]) buildColumns() error {
 func (s *Selector[T]) Where(ps ...Predicate) *Selector[T] {
 	// Set the WHERE conditions
 	s.where = ps
+	return s
+}
+
+func (s *Selector[T]) GroupBy(cols ...Column) *Selector[T] {
+	// Set the WHERE conditions
+	s.groupBy = cols
+	return s
+}
+
+func (s *Selector[T]) Having(ps ...Predicate) *Selector[T] {
+	s.having = ps
+	return s
+}
+
+func (s *Selector[T]) Offset(offset int) *Selector[T] {
+	s.offset = offset
+	return s
+}
+
+func (s *Selector[T]) Limit(limit int) *Selector[T] {
+	s.limit = limit
 	return s
 }
 
@@ -215,6 +260,17 @@ func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 
 	return nil, nil
 }
+func (s *Selector[T]) buildColumn(c Column, useAlias bool) error {
+	err := s.builder.buildColumn(c)
+	if err != nil {
+		return err
+	}
+	// 有的时候不需要拼接别名
+	if useAlias {
+		s.buildAs(c.alias)
+	}
+	return nil
+}
 
 //func (s *Selector[T]) addArgs(args ...any) {
 //	if s.args == nil {
@@ -222,15 +278,6 @@ func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 //	}
 //	s.args = append(s.args, args...)
 //}
-
-func (s *Selector[T]) buildAs(alias string) {
-	if alias != "" {
-		s.sb.WriteString(" AS ")
-		s.sb.WriteByte('`')
-		s.sb.WriteString(alias)
-		s.sb.WriteByte('`')
-	}
-}
 
 // Selectable 暂时没什么作用只是用作标记，可检索指定字段的标记
 // 让结构体实现这个接口，就可以传入
