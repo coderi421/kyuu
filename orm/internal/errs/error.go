@@ -33,10 +33,6 @@ func NewErrUnsupportedExpressionType(exp any) error {
 	return fmt.Errorf("orm: 不支持的表达式 %v", exp)
 }
 
-func NewErrInvalidTagContent(tag string) error {
-	return fmt.Errorf("orm: 错误的标签设置: %s", tag)
-}
-
 func NewErrUnsupportedSelectable(exp any) error {
 	return fmt.Errorf("orm: 不支持的目标列 %v", exp)
 }
@@ -50,3 +46,7 @@ func NewErrUnsupportedSelectable(exp any) error {
 // @ErrUnsupportedExpressionType 40001
 // 发生该错误，主要是因为传入了不支持的 Expression 的实际类型
 // 一般来说，这是因为中间件
+
+func NewErrInvalidTagContent(tag string) error {
+	return fmt.Errorf("orm: 错误的标签设置: %s", tag)
+}

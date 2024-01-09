@@ -7,6 +7,8 @@ type Aggregate struct {
 	alias string
 }
 
+func (a Aggregate) expr() {}
+
 func (a Aggregate) selectable() {}
 
 // As 这里使用 值 作为接收者，可以防止并发问题，每次都返回一个新的；也有小利于垃圾回收，局部之后，变量就会被回收
@@ -15,6 +17,31 @@ func (a Aggregate) As(alias string) Aggregate {
 		fn:    a.fn,
 		arg:   a.arg,
 		alias: alias,
+	}
+}
+
+// EQ 例如 AVG("id").EQ(12)
+func (a Aggregate) EQ(arg any) Predicate {
+	return Predicate{
+		left:  a,
+		op:    opEQ,
+		right: exprOf(arg),
+	}
+}
+
+func (a Aggregate) LT(arg any) Predicate {
+	return Predicate{
+		left:  a,
+		op:    opLT,
+		right: exprOf(arg),
+	}
+}
+
+func (a Aggregate) GT(arg any) Predicate {
+	return Predicate{
+		left:  a,
+		op:    opGT,
+		right: exprOf(arg),
 	}
 }
 

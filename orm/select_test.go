@@ -200,6 +200,164 @@ func TestSelector_Build(t *testing.T) {
 	}
 }
 
+func TestSelector_GroupBy(t *testing.T) {
+	db := memoryDB(t)
+	testCases := []struct {
+		name      string
+		q         QueryBuilder
+		wantQuery *Query
+		wantErr   error
+	}{
+		{
+			name: "None",
+			q:    NewSelector[TestModel](db).GroupBy(),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM `test_model`;",
+			},
+		},
+		{
+			name: "single",
+			q:    NewSelector[TestModel](db).GroupBy(C("Age")),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM `test_model` GROUP BY `age`;",
+			},
+		},
+		{
+			name: "multiple",
+			q:    NewSelector[TestModel](db).GroupBy(C("Age"), C("LastName")),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM `test_model` GROUP BY `age`,`last_name`;",
+			},
+		},
+		{
+			name:    "invalid",
+			q:       NewSelector[TestModel](db).GroupBy(C("Invalid")),
+			wantErr: errs.NewErrUnknownField("Invalid"),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			query, err := tc.q.Build()
+			assert.Equal(t, tc.wantErr, err)
+			if err != nil {
+				return
+			}
+			assert.Equal(t, tc.wantQuery, query)
+		})
+	}
+}
+
+func TestSelector_Having(t *testing.T) {
+	db := memoryDB(t)
+	testCases := []struct {
+		name      string
+		q         QueryBuilder
+		wantQuery *Query
+		wantErr   error
+	}{
+		{
+			name: "none",
+			q:    NewSelector[TestModel](db).GroupBy(C("Age")).Having(),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM `test_model` GROUP BY `age`;",
+			},
+		},
+		{
+			name: "sigle",
+			q:    NewSelector[TestModel](db).GroupBy(C("Age")).Having(C("FirstName").EQ("Tianyi")),
+			wantQuery: &Query{
+				SQL:  "SELECT * FROM `test_model` GROUP BY `age` HAVING `first_name` = ?;",
+				Args: []any{"Tianyi"},
+			},
+			wantErr: nil,
+		},
+		{
+			name: "multiple",
+			q:    NewSelector[TestModel](db).GroupBy(C("Age")).Having(C("FirstName").EQ("Tianyi"), C("LastName").EQ("Zheng")),
+			wantQuery: &Query{
+				SQL:  "SELECT * FROM `test_model` GROUP BY `age` HAVING (`first_name` = ?) AND (`last_name` = ?);",
+				Args: []any{"Tianyi", "Zheng"},
+			},
+			wantErr: nil,
+		},
+		{
+			// 聚合函数
+			name: "avg",
+			q:    NewSelector[TestModel](db).GroupBy(C("Age")).Having(Avg("Age").EQ(18)),
+			wantQuery: &Query{
+				SQL:  "SELECT * FROM `test_model` GROUP BY `age` HAVING AVG(`age`) = ?;",
+				Args: []any{18},
+			},
+			wantErr: nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			query, err := tc.q.Build()
+			assert.Equal(t, tc.wantErr, err)
+			if err != nil {
+				return
+			}
+			assert.Equal(t, tc.wantQuery, query)
+		})
+	}
+}
+
+func TestSelector_OffsetLimit(t *testing.T) {
+	db := memoryDB(t)
+	testCases := []struct {
+		name      string
+		q         QueryBuilder
+		wantQuery *Query
+		wantErr   error
+	}{
+		{
+			name: "zero",
+			q:    NewSelector[TestModel](db).Offset(0).Limit(0),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM `test_model`;",
+			},
+		},
+		{
+			name: "offset only",
+			q:    NewSelector[TestModel](db).Offset(10),
+			wantQuery: &Query{
+				SQL:  "SELECT * FROM `test_model` OFFSET ?;",
+				Args: []any{10},
+			},
+		},
+		{
+			name: "limit only",
+			q:    NewSelector[TestModel](db).Limit(10),
+			wantQuery: &Query{
+				SQL:  "SELECT * FROM `test_model` LIMIT ?;",
+				Args: []any{10},
+			},
+		},
+		{
+			name: "limit only",
+			q:    NewSelector[TestModel](db).Limit(10).Offset(20),
+			wantQuery: &Query{
+				SQL:  "SELECT * FROM `test_model` LIMIT ? OFFSET ?;",
+				Args: []any{10, 20},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			query, err := tc.q.Build()
+			assert.Equal(t, tc.wantErr, err)
+			if err != nil {
+				return
+			}
+			assert.Equal(t, tc.wantQuery, query)
+		})
+	}
+}
+
 func TestSelector_Get(t *testing.T) {
 	mockDB, mock, err := sqlmock.New()
 	if err != nil {
