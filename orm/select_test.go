@@ -305,6 +305,54 @@ func TestSelector_Having(t *testing.T) {
 	}
 }
 
+func TestSelector_OrderBy(t *testing.T) {
+	db := memoryDB(t)
+	testCases := []struct {
+		name      string
+		q         QueryBuilder
+		wantQuery *Query
+		wantErr   error
+	}{
+		{
+			name: "none",
+			q:    NewSelector[TestModel](db).OrderBy(),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM `test_model`;",
+			},
+		},
+		{
+			name: "single column",
+			q:    NewSelector[TestModel](db).OrderBy(ASC("Age")),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM `test_model` ORDER BY `age` ASC;",
+			},
+		},
+		{
+			name: "multiple columns",
+			q:    NewSelector[TestModel](db).OrderBy(ASC("Age"), Desc("Id")),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM `test_model` ORDER BY `age` ASC,`id` DESC;",
+			},
+		},
+		{
+			name:    "invalid column",
+			q:       NewSelector[TestModel](db).OrderBy(ASC("Invalid")),
+			wantErr: errs.NewErrUnknownField("Invalid"),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			query, err := tc.q.Build()
+			assert.Equal(t, tc.wantErr, err)
+			if err != nil {
+				return
+			}
+			assert.Equal(t, tc.wantQuery, query)
+		})
+	}
+}
+
 func TestSelector_OffsetLimit(t *testing.T) {
 	db := memoryDB(t)
 	testCases := []struct {

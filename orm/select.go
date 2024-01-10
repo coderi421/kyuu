@@ -18,6 +18,7 @@ type Selector[T any] struct {
 	db      *DB // db is the DB instance used for executing the query.
 	columns []Selectable
 	groupBy []Column
+	orderBy []OrderBy
 	offset  int
 	limit   int
 }
@@ -104,6 +105,14 @@ func (s *Selector[T]) Build() (*Query, error) {
 		}
 	}
 
+	// 排序
+	if len(s.orderBy) > 0 {
+		s.sb.WriteString(" ORDER BY ")
+		if err = s.buildOrderBy(); err != nil {
+			return nil, err
+		}
+	}
+
 	// 分页
 	if s.limit > 0 {
 		s.sb.WriteString(" LIMIT ?")
@@ -159,6 +168,22 @@ func (s *Selector[T]) buildColumns() error {
 	return nil
 }
 
+func (s *Selector[T]) buildOrderBy() error {
+	for i, ob := range s.orderBy {
+		if i > 0 {
+			s.sb.WriteByte(',')
+		}
+
+		err := s.builder.buildColumn(Column{name: ob.col})
+		if err != nil {
+			return err
+		}
+		s.sb.WriteByte(' ')
+		s.sb.WriteString(ob.order)
+	}
+	return nil
+}
+
 // Where 用于构造 WHERE 查询条件。如果 ps 长度为 0，那么不会构造 WHERE 部分
 func (s *Selector[T]) Where(ps ...Predicate) *Selector[T] {
 	// Set the WHERE conditions
@@ -184,6 +209,11 @@ func (s *Selector[T]) Offset(offset int) *Selector[T] {
 
 func (s *Selector[T]) Limit(limit int) *Selector[T] {
 	s.limit = limit
+	return s
+}
+
+func (s *Selector[T]) OrderBy(orderBys ...OrderBy) *Selector[T] {
+	s.orderBy = orderBys
 	return s
 }
 
@@ -260,6 +290,7 @@ func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 
 	return nil, nil
 }
+
 func (s *Selector[T]) buildColumn(c Column, useAlias bool) error {
 	err := s.builder.buildColumn(c)
 	if err != nil {
@@ -284,4 +315,23 @@ func (s *Selector[T]) buildColumn(c Column, useAlias bool) error {
 // 使用接口为的是：让 聚合函数， columns， 以及 RawExpr（原生sql） 都能作为参数传入统一个函数，做统一处理
 type Selectable interface {
 	selectable()
+}
+
+type OrderBy struct {
+	col   string
+	order string
+}
+
+func ASC(col string) OrderBy {
+	return OrderBy{
+		col:   col,
+		order: "ASC",
+	}
+}
+
+func Desc(col string) OrderBy {
+	return OrderBy{
+		col:   col,
+		order: "DESC",
+	}
 }
