@@ -9,6 +9,7 @@ type Option func(model *Model) error
 type Model struct {
 	// TableName 结构体对应的表名
 	TableName string
+	Fields    []*Field          // 由于 insert 等情况，需要 filed 有序，map 无法满足，所以冗余一个切边，存储顺序
 	FieldMap  map[string]*Field // 结构体 属性名 attr name 为 key  ItemId
 	ColumnMap map[string]*Field // DB column name 为 key    item_id
 }
@@ -21,6 +22,7 @@ type Field struct {
 	// Offset 相对于对象起始地址的字段偏移量
 	// uintptr 这个类型的值，只是记录相对位置
 	Offset uintptr
+	Index  int // struct 中 第几个 字段数据
 }
 
 // 我们支持的全部标签上的 key 都放在这里
