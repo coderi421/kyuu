@@ -137,6 +137,8 @@ func (r *registry) parseModel(val any) (*Model, error) {
 	// Get the number of fields in the struct
 	numField := typ.NumField()
 
+	// 用于存在有序的 db filed 信息
+	fields := make([]*Field, 0, numField)
 	// Create a map to store the Struct Field names and their corresponding column names
 	fds := make(map[string]*Field, numField)
 	// Create a map to store the DB names and their corresponding column names
@@ -165,7 +167,11 @@ func (r *registry) parseModel(val any) (*Model, error) {
 			GoName:  fdStruct.Name,
 			Type:    fdStruct.Type,
 			Offset:  fdStruct.Offset, // offset within struct, in bytes
+			Index:   i,               // 当前是第几个字段
 		}
+
+		// 顺序存贮当前节点的信息
+		fields = append(fields, f)
 		// Store the Struct Field's column name in the map
 		fds[fdStruct.Name] = f
 		// Store the DB's column name in the map
@@ -187,6 +193,7 @@ func (r *registry) parseModel(val any) (*Model, error) {
 		TableName: tableName,
 		FieldMap:  fds,
 		ColumnMap: colMap,
+		Fields:    fields,
 	}, nil
 }
 
