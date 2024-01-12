@@ -58,6 +58,69 @@ func TestInserter_Build(t *testing.T) {
 			},
 			wantErr: nil,
 		},
+		{
+			// 指定列
+			name: "specify columns",
+			q: NewInserter[TestModel](db).Columns("FirstName", "LastName").Values(
+				&TestModel{
+					Id:        1,
+					FirstName: "Zheng",
+					Age:       18,
+					LastName:  &sql.NullString{String: "Tianyi", Valid: true},
+				}),
+			wantQuery: &Query{
+				SQL:  "INSERT INTO `test_model` (`first_name`,`last_name`) VALUES (?,?);",
+				Args: []any{"Zheng", &sql.NullString{String: "Tianyi", Valid: true}},
+			},
+		},
+		{
+			// 指定 非法列
+			name: "invalid columns",
+			q: NewInserter[TestModel](db).Columns("FirstName", "Invalid").Values(
+				&TestModel{
+					Id:        1,
+					FirstName: "Zheng",
+					Age:       18,
+					LastName:  &sql.NullString{String: "Tianyi", Valid: true},
+				}),
+			wantErr: errs.NewErrUnknownField("Invalid"),
+		},
+		{
+			// upset
+			name: "upsert",
+			q: NewInserter[TestModel](db).Values(
+				&TestModel{
+					Id:        1,
+					FirstName: "Zheng",
+					Age:       18,
+					LastName:  &sql.NullString{String: "Tianyi", Valid: true},
+				}).OnDeplicateKey().Update(Assign("FirstName", "Z")),
+			wantQuery: &Query{
+				SQL:  "INSERT INTO `test_model` (`id`,`first_name`,`age`,`last_name`) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE `first_name`=?;",
+				Args: []any{int64(1), "Zheng", int8(18), &sql.NullString{String: "Tianyi", Valid: true}, "Z"},
+			},
+		},
+		{
+			// upset
+			name: "upsert use insert value",
+			q: NewInserter[TestModel](db).Values(
+				&TestModel{
+					Id:        1,
+					FirstName: "Zheng",
+					Age:       18,
+					LastName:  &sql.NullString{String: "Tianyi", Valid: true},
+				},
+				&TestModel{
+					Id:        2,
+					FirstName: "Tom",
+					Age:       16,
+					LastName:  &sql.NullString{String: "Jerry", Valid: true},
+				}).OnDeplicateKey().Update(C("FirstName"), C("LastName")),
+			wantQuery: &Query{
+				SQL:  "INSERT INTO `test_model` (`id`,`first_name`,`age`,`last_name`) VALUES (?,?,?,?),(?,?,?,?) ON DUPLICATE KEY UPDATE `first_name`=VALUES(`first_name`),`last_name`=VALUES(`last_name`);",
+				Args: []any{int64(1), "Zheng", int8(18), &sql.NullString{String: "Tianyi", Valid: true}, int64(2), "Tom", int8(16), &sql.NullString{String: "Jerry", Valid: true}},
+			},
+		},
 	}
 
 	for _, tc := range testCases {

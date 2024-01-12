@@ -7,6 +7,9 @@ type Column struct {
 	alias string // as 别名
 }
 
+// 处理插入操作指定字段的接口
+func (c Column) assign() {}
+
 func (c Column) expr()       {}
 func (c Column) selectable() {}
 
