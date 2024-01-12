@@ -6,13 +6,32 @@ import (
 	"reflect"
 )
 
+type OnDuplicateKeyBuilder[T any] struct {
+	i *Inserter[T]
+}
+
+type OnDuplicateKey struct {
+	assigns []Assignable
+}
+
+// Update
+//
+//	@Description: 如果存在，则更新指定字段
+//	@receiver o
+//	@param assigns
+//	@return *Inserter[T]
+func (o *OnDuplicateKeyBuilder[T]) Update(assigns ...Assignable) *Inserter[T] {
+	o.i.onDuplicate = &OnDuplicateKey{assigns: assigns}
+	return o.i
+}
+
 type Inserter[T any] struct {
 	builder
 	values  []*T     // 缓存要插入的数据
 	db      *DB      // 注册映射关系的实例，以及使用哪种映射方法的实例，以及 DB 实例
 	columns []string // update 语句中，要更新哪些字段
 	// 方案二
-	//onDuplicate *OnDuplicateKey
+	onDuplicate *OnDuplicateKey // 对应存在即更新语句： ON DUPLICATE KEY UPDATE
 
 	// 方案一
 	// onDuplicate []Assignable
@@ -44,6 +63,12 @@ func (i *Inserter[T]) Values(val ...*T) *Inserter[T] {
 func (i *Inserter[T]) Columns(cols ...string) *Inserter[T] {
 	i.columns = cols
 	return i
+}
+
+func (i *Inserter[T]) OnDeplicateKey() *OnDuplicateKeyBuilder[T] {
+	return &OnDuplicateKeyBuilder[T]{
+		i: i,
+	}
 }
 
 func (i *Inserter[T]) Build() (*Query, error) {
@@ -107,9 +132,51 @@ func (i *Inserter[T]) Build() (*Query, error) {
 		i.sb.WriteByte(')')
 	}
 
+	if i.onDuplicate != nil {
+		i.sb.WriteString(" ON DUPLICATE KEY UPDATE ")
+		for idx, assign := range i.onDuplicate.assigns {
+			if idx > 0 {
+				i.sb.WriteByte(',')
+			}
+
+			if err = i.buildAssignment(assign); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	i.sb.WriteByte(';')
 	return &Query{
 		SQL:  i.sb.String(),
 		Args: i.args,
 	}, nil
+}
+
+func (i *Inserter[T]) buildAssignment(a Assignable) error {
+	switch assign := a.(type) {
+	case Column:
+		// 使用原本插入的值
+		// "INSERT INTO `test_model`(`id`,`first_name`,`age`,`last_name`) VALUES(?,?,?,?),(?,?,?,?) ON DUPLICATE KEY UPDATE `first_name`=VALUES(`first_name`),`last_name`=VALUES(`last_name`);"
+		i.sb.WriteByte('`')
+		fd, ok := i.model.FieldMap[assign.name]
+		if !ok {
+			return errs.NewErrUnknownField(assign.name)
+		}
+		i.sb.WriteString(fd.ColName)
+		i.sb.WriteString("`=VALUES(`")
+		i.sb.WriteString(fd.ColName)
+		i.sb.WriteString("`)")
+	case Assignment:
+		// "INSERT INTO `test_model`(`id`,`first_name`,`age`,`last_name`) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE `first_name`=?;"
+		i.sb.WriteByte('`')
+		fd, ok := i.model.FieldMap[assign.column]
+		if !ok {
+			return errs.NewErrUnknownField(assign.column)
+		}
+		i.sb.WriteString(fd.ColName)
+		i.sb.WriteByte('`')
+		i.sb.WriteString("=?")
+		i.addArgs(assign.val)
+	}
+	return nil
 }
