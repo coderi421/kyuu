@@ -101,6 +101,17 @@ func TestInserter_Build(t *testing.T) {
 			},
 		},
 		{
+			name: "upsert invalid column",
+			q: NewInserter[TestModel](db).Values(
+				&TestModel{
+					Id:        1,
+					FirstName: "Zheng",
+					Age:       18,
+					LastName:  &sql.NullString{String: "Tianyi", Valid: true},
+				}).OnDeplicateKey().Update(Assign("Invalid", "zheng")),
+			wantErr: errs.NewErrUnknownField("Invalid"),
+		},
+		{
 			// upset
 			name: "upsert use insert value",
 			q: NewInserter[TestModel](db).Values(
