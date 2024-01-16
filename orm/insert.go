@@ -1,17 +1,26 @@
 package orm
 
 import (
+	"context"
+	"database/sql"
 	"github.com/coderi421/kyuu/orm/internal/errs"
 	"github.com/coderi421/kyuu/orm/model"
 	"reflect"
 )
 
-type OnDuplicateKeyBuilder[T any] struct {
-	i *Inserter[T]
+type UpsertBuilder[T any] struct {
+	i               *Inserter[T]
+	conflictColumns []string // 由于不同 DB insertOrUpdate 语法不同，所以这里将 更新字段抽成共通
 }
 
-type OnDuplicateKey struct {
-	assigns []Assignable
+type Upsert struct {
+	conflictColumns []string     // 为 sqlite3 ON CONFLICT (id) 这种语法准备的
+	assigns         []Assignable // 插入失败后，更新的字段的切片
+}
+
+func (o *UpsertBuilder[T]) ConflictColumns(cols ...string) *UpsertBuilder[T] {
+	o.conflictColumns = cols
+	return o
 }
 
 // Update
@@ -20,8 +29,11 @@ type OnDuplicateKey struct {
 //	@receiver o
 //	@param assigns
 //	@return *Inserter[T]
-func (o *OnDuplicateKeyBuilder[T]) Update(assigns ...Assignable) *Inserter[T] {
-	o.i.onDuplicate = &OnDuplicateKey{assigns: assigns}
+func (o *UpsertBuilder[T]) Update(assigns ...Assignable) *Inserter[T] {
+	o.i.onDuplicate = &Upsert{
+		assigns:         assigns,
+		conflictColumns: o.conflictColumns,
+	}
 	return o.i
 }
 
@@ -31,7 +43,7 @@ type Inserter[T any] struct {
 	db      *DB      // 注册映射关系的实例，以及使用哪种映射方法的实例，以及 DB 实例
 	columns []string // update 语句中，要更新哪些字段
 	// 方案二
-	onDuplicate *OnDuplicateKey // 对应存在即更新语句： ON DUPLICATE KEY UPDATE
+	onDuplicate *Upsert // 对应存在即更新语句： ON DUPLICATE KEY UPDATE
 
 	// 方案一
 	// onDuplicate []Assignable
@@ -40,10 +52,17 @@ type Inserter[T any] struct {
 func NewInserter[T any](db *DB) *Inserter[T] {
 	return &Inserter[T]{
 		db: db,
+		builder: builder{
+			quoter:  db.dialect.quoter(),
+			dialect: db.dialect,
+		},
 	}
 }
 
 // Values
+// Fields 指定要插入的列
+// TODO 目前我们只支持指定具体的列，但是不支持复杂的表达式
+// 例如不支持 VALUES(..., now(), now()) 这种在 MySQL 里面常用的
 //
 //	@Description: 将插入数据库中的数据
 //	@receiver i
@@ -65,8 +84,8 @@ func (i *Inserter[T]) Columns(cols ...string) *Inserter[T] {
 	return i
 }
 
-func (i *Inserter[T]) OnDeplicateKey() *OnDuplicateKeyBuilder[T] {
-	return &OnDuplicateKeyBuilder[T]{
+func (i *Inserter[T]) OnDuplicateKey() *UpsertBuilder[T] {
+	return &UpsertBuilder[T]{
 		i: i,
 	}
 }
@@ -82,9 +101,9 @@ func (i *Inserter[T]) Build() (*Query, error) {
 	}
 	i.model = m
 
-	i.sb.WriteString("INSERT INTO `")
-	i.sb.WriteString(m.TableName)
-	i.sb.WriteString("` (")
+	i.sb.WriteString("INSERT INTO ")
+	i.quote(m.TableName)
+	i.sb.WriteString(" (")
 
 	fields := m.Fields
 	if len(i.columns) != 0 {
@@ -105,9 +124,7 @@ func (i *Inserter[T]) Build() (*Query, error) {
 		if idx > 0 {
 			i.sb.WriteByte(',')
 		}
-		i.sb.WriteByte('`')
-		i.sb.WriteString(fd.ColName)
-		i.sb.WriteByte('`')
+		i.quote(fd.ColName)
 	}
 
 	i.sb.WriteString(") VALUES ")
@@ -133,15 +150,9 @@ func (i *Inserter[T]) Build() (*Query, error) {
 	}
 
 	if i.onDuplicate != nil {
-		i.sb.WriteString(" ON DUPLICATE KEY UPDATE ")
-		for idx, assign := range i.onDuplicate.assigns {
-			if idx > 0 {
-				i.sb.WriteByte(',')
-			}
-
-			if err = i.buildAssignment(assign); err != nil {
-				return nil, err
-			}
+		err = i.dialect.buildUpsert(&i.builder, i.onDuplicate)
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -179,4 +190,16 @@ func (i *Inserter[T]) buildAssignment(a Assignable) error {
 		i.addArgs(assign.val)
 	}
 	return nil
+}
+
+func (i *Inserter[T]) Exec(ctx context.Context) sql.Result {
+	q, err := i.Build()
+	if err != nil {
+		return Result{err: err}
+	}
+	res, err := i.db.db.ExecContext(ctx, q.SQL, q.Args...)
+	return Result{
+		err: err,
+		res: res,
+	}
 }

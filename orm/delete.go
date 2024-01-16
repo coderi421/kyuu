@@ -12,6 +12,10 @@ type Deleter[T any] struct {
 func NewDeleter[T any](db *DB) *Deleter[T] {
 	return &Deleter[T]{
 		db: db,
+		builder: builder{
+			dialect: db.dialect,
+			quoter:  db.dialect.quoter(),
+		},
 	}
 }
 
@@ -34,9 +38,7 @@ func (d *Deleter[T]) Build() (*Query, error) {
 
 	// If the table name is not provided, use the name of the T struct.
 	if d.table == "" {
-		d.sb.WriteByte('`')
-		d.sb.WriteString(d.model.TableName)
-		d.sb.WriteByte('`')
+		d.quote(d.model.TableName)
 	} else {
 		d.sb.WriteString(d.table)
 	}

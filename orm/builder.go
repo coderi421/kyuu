@@ -7,9 +7,11 @@ import (
 )
 
 type builder struct {
-	sb    strings.Builder // sb is used to build the SQL query string.
-	args  []any           // args holds the arguments for the query.
-	model *model.Model    // model is the model associated with the selector.
+	sb      strings.Builder // sb is used to build the SQL query string.
+	args    []any           // args holds the arguments for the query.
+	model   *model.Model    // model is the model associated with the selector.
+	quoter  byte            // 不同数据库的标点不同，mysql `id_my` postgresql 'id_my'
+	dialect Dialect         // db 初始化的时候，确定的方言  mysql postgresql
 }
 
 // type Predicates []Predicate
@@ -69,7 +71,7 @@ func (b *builder) buildExpression(e Expression) error {
 		//expr.alias = ""
 		// Append column name to the SQL query
 		// WHERE 中的条件 不允许用别名
-		return b.buildColumn(expr)
+		return b.buildColumn(expr.name)
 	case Aggregate:
 		//ex. HAVING AVG(`age`) = ?;
 		return b.buildAggregate(expr, false)
@@ -132,15 +134,13 @@ func (b *builder) buildExpression(e Expression) error {
 	return nil
 }
 
-func (b *builder) buildColumn(c Column) error {
+func (b *builder) buildColumn(fd string) error {
 	// 找到表中对应名字
-	fd, ok := b.model.FieldMap[c.name]
+	meta, ok := b.model.FieldMap[fd]
 	if !ok {
-		return errs.NewErrUnknownField(c.name)
+		return errs.NewErrUnknownField(fd)
 	}
-	b.sb.WriteByte('`')
-	b.sb.WriteString(fd.ColName)
-	b.sb.WriteByte('`')
+	b.quote(meta.ColName)
 	// from 后的部分不需要 使用 as 别名
 	return nil
 }
@@ -172,8 +172,12 @@ func (b *builder) addArgs(args ...any) {
 func (b *builder) buildAs(alias string) {
 	if alias != "" {
 		b.sb.WriteString(" AS ")
-		b.sb.WriteByte('`')
-		b.sb.WriteString(alias)
-		b.sb.WriteByte('`')
+		b.quote(alias)
 	}
+}
+
+func (b *builder) quote(name string) {
+	b.sb.WriteByte(b.quoter)
+	b.sb.WriteString(name)
+	b.sb.WriteByte(b.quoter)
 }

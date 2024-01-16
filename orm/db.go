@@ -11,6 +11,7 @@ import (
 type DBOption func(*DB)
 
 type DB struct {
+	dialect    Dialect
 	r          model.Registry // 存储数据库表和 struct 映射关系的实例
 	db         *sql.DB
 	valCreator valuer.Creator // 与DB交互映射的实现
@@ -33,6 +34,7 @@ func Open(driver string, dsn string, opts ...DBOption) (*DB, error) {
 func OpenDB(db *sql.DB, opts ...DBOption) (*DB, error) {
 	// Initialize a new DB instance with an empty registry.
 	res := &DB{
+		dialect:    MySQL,                 // 默认方言为 mysql
 		r:          model.NewRegistry(),   // 构造 sql 的方法
 		db:         db,                    // 数据库
 		valCreator: unsafe.NewUnsafeValue, // 映射 DB 查询结果的实现
@@ -45,6 +47,13 @@ func OpenDB(db *sql.DB, opts ...DBOption) (*DB, error) {
 
 	// Return the DB instance and no error.
 	return res, nil
+}
+
+// DBWithRegistry 这里可以替换成不同的映射实例
+func DBWithDialect(d Dialect) DBOption {
+	return func(db *DB) {
+		db.dialect = d
+	}
 }
 
 // DBWithRegistry 这里可以替换成不同的映射实例

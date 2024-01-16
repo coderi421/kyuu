@@ -38,6 +38,10 @@ func NewErrUnsupportedSelectable(exp any) error {
 	return fmt.Errorf("orm: 不支持的目标列 %v", exp)
 }
 
+func NewErrUnsupportedAssignableType(expr any) error {
+	return fmt.Errorf("orm: 不支持的赋值表达式类型 %v", expr)
+}
+
 // 后面可以考虑支持错误码
 // func NewErrUnsupportedExpressionType(exp any) error {
 // 	return fmt.Errorf("orm-50001: 不支持的表达式 %v", exp)
