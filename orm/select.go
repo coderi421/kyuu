@@ -27,6 +27,10 @@ type Selector[T any] struct {
 func NewSelector[T any](db *DB) *Selector[T] {
 	return &Selector[T]{
 		db: db,
+		builder: builder{
+			quoter:  db.dialect.quoter(),
+			dialect: db.dialect,
+		},
 	}
 }
 
@@ -63,10 +67,8 @@ func (s *Selector[T]) Build() (*Query, error) {
 	s.sb.WriteString(" FROM ")
 
 	if s.table == "" {
-		s.sb.WriteByte('`')
 		// Get the name of the struct using reflection
-		s.sb.WriteString(s.model.TableName)
-		s.sb.WriteByte('`')
+		s.quote(s.model.TableName)
 	} else {
 		// 这里没有处理 添加`符号，让用户自己应该名字自己在做什么
 		s.sb.WriteString(s.table)
@@ -174,7 +176,7 @@ func (s *Selector[T]) buildOrderBy() error {
 			s.sb.WriteByte(',')
 		}
 
-		err := s.builder.buildColumn(Column{name: ob.col})
+		err := s.builder.buildColumn(ob.col)
 		if err != nil {
 			return err
 		}
@@ -292,7 +294,7 @@ func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 }
 
 func (s *Selector[T]) buildColumn(c Column, useAlias bool) error {
-	err := s.builder.buildColumn(c)
+	err := s.builder.buildColumn(c.name)
 	if err != nil {
 		return err
 	}

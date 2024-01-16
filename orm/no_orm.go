@@ -25,8 +25,8 @@ CREATE TABLE IF NOT EXISTS test_model(
 `
 }
 
-func memoryDB(t *testing.T) *DB {
-	orm, err := Open("sqlite3", "file:test.db?cache=shared&mode=memory")
+func memoryDB(t *testing.T, opts ...DBOption) *DB {
+	orm, err := Open("sqlite3", "file:test.db?cache=shared&mode=memory", opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
