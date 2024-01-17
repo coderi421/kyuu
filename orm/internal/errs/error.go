@@ -29,17 +29,19 @@ func NewErrUnknownColumn(col string) error {
 	return fmt.Errorf("orm: 未知列 %s", col)
 }
 
+func NewErrUnsupportedAssignableType(exp any) error {
+	return fmt.Errorf("orm: 不支持的 Assignable 表达式 %v", exp)
+}
+
 // NewErrUnsupportedExpressionType 返回一个不支持该 expression 错误信息
 func NewErrUnsupportedExpressionType(exp any) error {
 	return fmt.Errorf("orm: 不支持的表达式 %v", exp)
 }
 
+// NewErrUnsupportedSelectable 返回一个不支持该 selectable 的错误信息
+// 即 exp 不能作为 SELECT xxx 的一部分
 func NewErrUnsupportedSelectable(exp any) error {
 	return fmt.Errorf("orm: 不支持的目标列 %v", exp)
-}
-
-func NewErrUnsupportedAssignableType(expr any) error {
-	return fmt.Errorf("orm: 不支持的赋值表达式类型 %v", expr)
 }
 
 // 后面可以考虑支持错误码

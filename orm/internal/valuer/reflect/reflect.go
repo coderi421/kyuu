@@ -82,3 +82,12 @@ func (r reflectValue) SetColumns(rows *sql.Rows) error {
 	}
 	return nil
 }
+
+// Field 获取字段对应的数据
+func (r reflectValue) Field(name string) (any, error) {
+	res := r.val.FieldByName(name)
+	if res == (reflect.Value{}) {
+		return nil, errs.NewErrUnknownField(name)
+	}
+	return res.Interface(), nil
+}

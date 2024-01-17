@@ -51,15 +51,13 @@ func (m *mysqlDialect) buildUpsert(b *builder, u *Upsert) error {
 			b.quote(fd.ColName)
 			b.sb.WriteString("=VALUES(")
 			b.quote(fd.ColName)
-			b.sb.WriteString(")")
+			b.sb.WriteByte(')')
 		case Assignment:
 			// "INSERT INTO `test_model`(`id`,`first_name`,`age`,`last_name`) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE `first_name`=?;"
-			// 字段不对，或者说列不对
-			fd, ok := b.model.FieldMap[assign.column]
-			if !ok {
-				return errs.NewErrUnknownField(assign.column)
+			err := b.buildColumn(assign.column)
+			if err != nil {
+				return err
 			}
-			b.quote(fd.ColName)
 			b.sb.WriteString("=?")
 			b.addArgs(assign.val)
 		default:

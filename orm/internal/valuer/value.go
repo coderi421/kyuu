@@ -23,6 +23,7 @@ import (
 type Value interface {
 	// SetColumns 设置新值
 	SetColumns(rows *sql.Rows) error
+	Field(name string) (any, error)
 }
 
 type Creator func(val interface{}, meta *model.Model) Value
