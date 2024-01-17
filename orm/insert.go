@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"github.com/coderi421/kyuu/orm/internal/errs"
 	"github.com/coderi421/kyuu/orm/model"
-	"reflect"
 )
 
 type UpsertBuilder[T any] struct {
@@ -30,7 +29,7 @@ func (o *UpsertBuilder[T]) ConflictColumns(cols ...string) *UpsertBuilder[T] {
 //	@param assigns
 //	@return *Inserter[T]
 func (o *UpsertBuilder[T]) Update(assigns ...Assignable) *Inserter[T] {
-	o.i.onDuplicate = &Upsert{
+	o.i.upsert = &Upsert{
 		assigns:         assigns,
 		conflictColumns: o.conflictColumns,
 	}
@@ -43,37 +42,43 @@ type Inserter[T any] struct {
 	db      *DB      // 注册映射关系的实例，以及使用哪种映射方法的实例，以及 DB 实例
 	columns []string // update 语句中，要更新哪些字段
 	// 方案二
-	onDuplicate *Upsert // 对应存在即更新语句： ON DUPLICATE KEY UPDATE
+	upsert *Upsert // 对应存在即更新语句： ON DUPLICATE KEY UPDATE
 
 	// 方案一
-	// onDuplicate []Assignable
+	// upsert []Assignable
 }
 
 func NewInserter[T any](db *DB) *Inserter[T] {
 	return &Inserter[T]{
 		db: db,
 		builder: builder{
-			quoter:  db.dialect.quoter(),
 			dialect: db.dialect,
+			quoter:  db.dialect.quoter(),
 		},
 	}
 }
 
 // Values
-// Fields 指定要插入的列
-// TODO 目前我们只支持指定具体的列，但是不支持复杂的表达式
-// 例如不支持 VALUES(..., now(), now()) 这种在 MySQL 里面常用的
 //
 //	@Description: 将插入数据库中的数据
 //	@receiver i
 //	@param val
 //	@return *Inserter[T]
-func (i *Inserter[T]) Values(val ...*T) *Inserter[T] {
-	i.values = val
+func (i *Inserter[T]) Values(vals ...*T) *Inserter[T] {
+	i.values = vals
 	return i
 }
 
+func (i *Inserter[T]) OnDuplicateKey() *UpsertBuilder[T] {
+	return &UpsertBuilder[T]{
+		i: i,
+	}
+}
+
 // Columns
+// Fields 指定要插入的列
+// TODO 目前我们只支持指定具体的列，但是不支持复杂的表达式
+// 例如不支持 VALUES(..., now(), now()) 这种在 MySQL 里面常用的
 //
 //	@Description: 更新指定的字段
 //	@receiver i
@@ -82,12 +87,6 @@ func (i *Inserter[T]) Values(val ...*T) *Inserter[T] {
 func (i *Inserter[T]) Columns(cols ...string) *Inserter[T] {
 	i.columns = cols
 	return i
-}
-
-func (i *Inserter[T]) OnDuplicateKey() *UpsertBuilder[T] {
-	return &UpsertBuilder[T]{
-		i: i,
-	}
 }
 
 func (i *Inserter[T]) Build() (*Query, error) {
@@ -119,14 +118,13 @@ func (i *Inserter[T]) Build() (*Query, error) {
 	}
 
 	// (len(i.values) + 1) 中 +1 是考虑到 UPSERT 语句会传递额外的参数
-	i.args = make([]any, 0, len(fields)*len(i.values)+1)
+	i.args = make([]any, 0, len(fields)*(len(i.values)+1))
 	for idx, fd := range fields {
 		if idx > 0 {
 			i.sb.WriteByte(',')
 		}
 		i.quote(fd.ColName)
 	}
-
 	i.sb.WriteString(") VALUES ")
 	for vIdx, val := range i.values {
 		// 构建 VALUES (?,?,?), (?,?,?)
@@ -134,23 +132,29 @@ func (i *Inserter[T]) Build() (*Query, error) {
 			i.sb.WriteByte(',')
 		}
 		// 由于是泛型，所以这里使用反射取值
-		refVal := reflect.ValueOf(val).Elem()
+		//refVal := reflect.ValueOf(val).Elem()
+		refVal := i.db.valCreator(val, i.model)
+
 		i.sb.WriteByte('(')
-		for fIdx, filed := range fields {
+		for fIdx, field := range fields {
 			// 构建 (?,?,?)
 			if fIdx > 0 {
 				i.sb.WriteByte(',')
 			}
 			i.sb.WriteByte('?')
 			// 由于 refVal 中的是所有的数据，所以需要确定第几个数据是我们需要的字段
-			fdVal := refVal.Field(filed.Index)
-			i.addArgs(fdVal.Interface())
+			//fdVal := refVal.Field(filed.Index)
+			fdVal, e := refVal.Field(field.GoName)
+			if e != nil {
+				return nil, e
+			}
+			i.addArgs(fdVal)
 		}
 		i.sb.WriteByte(')')
 	}
 
-	if i.onDuplicate != nil {
-		err = i.dialect.buildUpsert(&i.builder, i.onDuplicate)
+	if i.upsert != nil {
+		err = i.dialect.buildUpsert(&i.builder, i.upsert)
 		if err != nil {
 			return nil, err
 		}
@@ -161,35 +165,6 @@ func (i *Inserter[T]) Build() (*Query, error) {
 		SQL:  i.sb.String(),
 		Args: i.args,
 	}, nil
-}
-
-func (i *Inserter[T]) buildAssignment(a Assignable) error {
-	switch assign := a.(type) {
-	case Column:
-		// 使用原本插入的值
-		// "INSERT INTO `test_model`(`id`,`first_name`,`age`,`last_name`) VALUES(?,?,?,?),(?,?,?,?) ON DUPLICATE KEY UPDATE `first_name`=VALUES(`first_name`),`last_name`=VALUES(`last_name`);"
-		i.sb.WriteByte('`')
-		fd, ok := i.model.FieldMap[assign.name]
-		if !ok {
-			return errs.NewErrUnknownField(assign.name)
-		}
-		i.sb.WriteString(fd.ColName)
-		i.sb.WriteString("`=VALUES(`")
-		i.sb.WriteString(fd.ColName)
-		i.sb.WriteString("`)")
-	case Assignment:
-		// "INSERT INTO `test_model`(`id`,`first_name`,`age`,`last_name`) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE `first_name`=?;"
-		i.sb.WriteByte('`')
-		fd, ok := i.model.FieldMap[assign.column]
-		if !ok {
-			return errs.NewErrUnknownField(assign.column)
-		}
-		i.sb.WriteString(fd.ColName)
-		i.sb.WriteByte('`')
-		i.sb.WriteString("=?")
-		i.addArgs(assign.val)
-	}
-	return nil
 }
 
 func (i *Inserter[T]) Exec(ctx context.Context) sql.Result {

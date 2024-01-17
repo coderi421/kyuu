@@ -24,6 +24,7 @@ func NewUnsafeValue(val any, meta *model.Model) valuer.Value {
 	}
 }
 
+// SetColumns 将 sql 结果应该到 struct 中
 func (u unsafeValue) SetColumns(rows *sql.Rows) error {
 	columns, err := rows.Columns()
 	if err != nil {
@@ -45,4 +46,18 @@ func (u unsafeValue) SetColumns(rows *sql.Rows) error {
 	}
 
 	return rows.Scan(colValues...)
+}
+
+// Field 获取映射信息
+func (u unsafeValue) Field(name string) (interface{}, error) {
+	fd, ok := u.meta.FieldMap[name]
+	if !ok {
+		return nil, errs.NewErrUnknownField(name)
+	}
+
+	// 起始点 + offset 就是目标的起始位置
+	ptr := unsafe.Pointer(uintptr(u.addr) + fd.Offset)
+	//用反射取出来
+	val := reflect.NewAt(fd.Type, ptr).Elem()
+	return val.Interface(), nil
 }
