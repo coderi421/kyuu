@@ -82,51 +82,57 @@ func (b *builder) buildExpression(e Expression) error {
 		b.addArgs(expr.val)
 	case RawExpr:
 		// 执行原生 sql 语句
-		b.sb.WriteString(expr.raw)
-		if len(expr.args) != 0 {
-			b.addArgs(expr.args...)
-			//if b.args == nil {
-			//	b.args = make([]any, 0, 8)
-			//}
-			//b.args = append(b.args, expr.args...)
-		}
+		//b.sb.WriteString(expr.raw)
+		//if len(expr.args) != 0 {
+		//	b.addArgs(expr.args...)
+		//	//if b.args == nil {
+		//	//	b.args = make([]any, 0, 8)
+		//	//}
+		//	//b.args = append(b.args, expr.args...)
+		//}
+		b.raw(expr)
+	case MathExpr:
+		return b.buildBinaryExpr(binaryExpr(expr))
 	case Predicate:
-		// Build left expression
-		// 如果左边有复杂结构，则在最外边套一层括号
-		_, lp := expr.left.(Predicate)
-		if lp {
-			b.sb.WriteByte('(')
-		}
-		if err := b.buildExpression(expr.left); err != nil {
-			return err
-		}
-		if lp {
-			b.sb.WriteByte(')')
-		}
-
-		if expr.op == "" {
-			// 如果只有左边（op 符号为空，就不需要连接），例如执行原生 sql raw 的时候，就只有左边
-			return nil
-		}
-
-		//处理运算符号
-		// Append operator to the SQL query
-		b.sb.WriteByte(' ')
-		b.sb.WriteString(expr.op.String())
-		b.sb.WriteByte(' ')
-
-		// 处理右边的逻辑
-		// Build right expression
-		_, rp := expr.right.(Predicate)
-		if rp {
-			b.sb.WriteByte('(')
-		}
-		if err := b.buildExpression(expr.right); err != nil {
-			return err
-		}
-		if rp {
-			b.sb.WriteByte(')')
-		}
+		return b.buildBinaryExpr(binaryExpr(expr))
+		//// Build left expression
+		//// 如果左边有复杂结构，则在最外边套一层括号
+		//_, lp := expr.left.(Predicate)
+		//if lp {
+		//	b.sb.WriteByte('(')
+		//}
+		//if err := b.buildExpression(expr.left); err != nil {
+		//	return err
+		//}
+		//if lp {
+		//	b.sb.WriteByte(')')
+		//}
+		//
+		//if expr.op == "" {
+		//	// 如果只有左边（op 符号为空，就不需要连接），例如执行原生 sql raw 的时候，就只有左边
+		//	return nil
+		//}
+		//
+		////处理运算符号
+		//// Append operator to the SQL query
+		//b.sb.WriteByte(' ')
+		//b.sb.WriteString(expr.op.String())
+		//b.sb.WriteByte(' ')
+		//
+		//// 处理右边的逻辑
+		//// Build right expression
+		//_, rp := expr.right.(Predicate)
+		//if rp {
+		//	b.sb.WriteByte('(')
+		//}
+		//if err := b.buildExpression(expr.right); err != nil {
+		//	return err
+		//}
+		//if rp {
+		//	b.sb.WriteByte(')')
+		//}
+	case binaryExpr:
+		return b.buildBinaryExpr(expr)
 	default:
 		return errs.NewErrUnsupportedExpressionType(expr)
 	}
@@ -162,6 +168,52 @@ func (b *builder) buildAggregate(a Aggregate, useAlias bool) error {
 	}
 	return nil
 }
+
+func (b *builder) buildBinaryExpr(e binaryExpr) error {
+	err := b.buildSubExpr(e.left)
+	if err != nil {
+		return err
+	}
+	if e.op != "" {
+		b.sb.WriteByte(' ')
+		b.sb.WriteString(e.op.String())
+	}
+	if e.right != nil {
+		b.sb.WriteByte(' ')
+		return b.buildSubExpr(e.right)
+	}
+	return nil
+}
+
+// 处理运算逻辑
+func (b *builder) buildSubExpr(subExpr Expression) error {
+	switch sub := subExpr.(type) {
+	case MathExpr:
+		_ = b.sb.WriteByte('(')
+		if err := b.buildBinaryExpr(binaryExpr(sub)); err != nil {
+			return err
+		}
+		_ = b.sb.WriteByte(')')
+	case binaryExpr:
+		_ = b.sb.WriteByte('(')
+		if err := b.buildBinaryExpr(sub); err != nil {
+			return err
+		}
+		_ = b.sb.WriteByte(')')
+	case Predicate:
+		_ = b.sb.WriteByte('(')
+		if err := b.buildBinaryExpr(binaryExpr(sub)); err != nil {
+			return err
+		}
+		_ = b.sb.WriteByte(')')
+	default:
+		if err := b.buildExpression(sub); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (b *builder) addArgs(args ...any) {
 	if b.args == nil {
 		b.args = make([]any, 0, 8)
@@ -180,4 +232,11 @@ func (b *builder) quote(name string) {
 	b.sb.WriteByte(b.quoter)
 	b.sb.WriteString(name)
 	b.sb.WriteByte(b.quoter)
+}
+
+func (b *builder) raw(r RawExpr) {
+	b.sb.WriteString(r.raw)
+	if len(r.args) != 0 {
+		b.addArgs(r.args...)
+	}
 }

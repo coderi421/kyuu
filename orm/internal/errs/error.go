@@ -12,8 +12,10 @@ var (
 	// 所以放在我们的 internal 包里
 	ErrPointerOnly            = errors.New("orm: 只支持一级指针作为输入，例如 *User")
 	ErrNoRows                 = errors.New("orm: 未找到数据")
-	ErrInsertZeroRow          = errors.New("orm: 插入 0 行")
 	ErrTooManyReturnedColumns = errors.New("eorm: 过多列")
+	ErrInsertZeroRow          = errors.New("orm: 插入 0 行")
+
+	ErrNoUpdatedColumns = errors.New("orm: 未指定更新的列")
 )
 
 // NewErrUnknownField 返回代表未知字段的错误

@@ -36,6 +36,24 @@ func C(name string) Column {
 	return Column{name: name}
 }
 
+// Add ...Set(Assign("Age", C("Age").Add(1))), -> SET `age`=`age` + ?;
+func (c Column) Add(delta int) MathExpr {
+	return MathExpr{
+		left:  c,
+		op:    opAdd,
+		right: value{val: delta},
+	}
+}
+
+// Multi ...Set(Assign("Age", C("Age").Multi(1))), -> SET `age`=`age` * ?;
+func (c Column) Multi(delta int) MathExpr {
+	return MathExpr{
+		left:  c,
+		op:    opMulti,
+		right: value{val: delta},
+	}
+}
+
 // EQ 例如 C("id").Eq(12)
 func (c Column) EQ(arg any) Predicate {
 	return Predicate{

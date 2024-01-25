@@ -140,7 +140,7 @@ func (r *registry) parseModel(val any) (*Model, error) {
 	// 用于存在有序的 db filed 信息
 	fields := make([]*Field, 0, numField)
 	// Create a map to store the Struct Field names and their corresponding column names
-	fds := make(map[string]*Field, numField)
+	fieldMap := make(map[string]*Field, numField)
 	// Create a map to store the DB names and their corresponding column names
 	colMap := make(map[string]*Field, numField)
 
@@ -173,7 +173,7 @@ func (r *registry) parseModel(val any) (*Model, error) {
 		// 顺序存贮当前节点的信息
 		fields = append(fields, f)
 		// Store the Struct Field's column name in the map
-		fds[fdStruct.Name] = f
+		fieldMap[fdStruct.Name] = f
 		// Store the DB's column name in the map
 		colMap[colName] = f
 	}
@@ -191,7 +191,7 @@ func (r *registry) parseModel(val any) (*Model, error) {
 	// Create and return the model
 	return &Model{
 		TableName: tableName,
-		FieldMap:  fds,
+		FieldMap:  fieldMap,
 		ColumnMap: colMap,
 		Fields:    fields,
 	}, nil
@@ -266,6 +266,9 @@ func WithColumnName(field, columnName string) Option {
 		}
 
 		// Set the column name for the Field
+		// 注意，这里我们根本没有检测 ColName 会不会是空字符串
+		// 因为正常情况下，用户都不会写错
+		// 即便写错了，也很容易在测试中发现
 		fd.ColName = columnName
 		return nil
 	}
