@@ -74,6 +74,14 @@ func TestUpdater_Build(t *testing.T) {
 				Args: []any{1},
 			},
 		},
+		{
+			name: "non-zero",
+			u:    NewUpdater[TestModel](db).Set(AssignNotZeroColumns(&TestModel{Id: 13})...),
+			want: &Query{
+				SQL:  "UPDATE `test_model` SET `id`=?;",
+				Args: []any{int64(13)},
+			},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
