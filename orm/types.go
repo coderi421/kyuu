@@ -2,7 +2,6 @@ package orm
 
 import (
 	"context"
-	"database/sql"
 )
 
 type Querier[T any] interface {
@@ -13,7 +12,7 @@ type Querier[T any] interface {
 }
 
 type Executor interface {
-	Exec(ctx context.Context) (sql.Result, error)
+	Exec(ctx context.Context) Result
 }
 
 type Query struct {

@@ -3,12 +3,14 @@ package orm
 type op string
 
 const (
-	opEQ  = "="
-	opLT  = "<"
-	opGT  = ">"
-	opAND = "AND"
-	opOR  = "OR"
-	opNOT = "NOT"
+	opEQ    = "="
+	opLT    = "<"
+	opGT    = ">"
+	opAND   = "AND"
+	opOR    = "OR"
+	opNOT   = "NOT"
+	opAdd   = "+"
+	opMulti = "*"
 )
 
 func (o op) String() string {
@@ -35,11 +37,13 @@ func exprOf(e any) Expression {
 
 // Predicate 代表一个查询条件
 // Predicate 可以通过和 Predicate 组合构成复杂的查询条件
-type Predicate struct {
-	left  Expression
-	op    op
-	right Expression
-}
+//
+//	type Predicate struct {
+//		left  Expression
+//		op    op
+//		right Expression
+//	}
+type Predicate binaryExpr
 
 func (Predicate) expr() {}
 

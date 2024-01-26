@@ -2,7 +2,6 @@ package orm
 
 import (
 	"context"
-	"database/sql"
 	"github.com/coderi421/kyuu/orm/internal/errs"
 	"github.com/coderi421/kyuu/orm/model"
 )
@@ -14,7 +13,7 @@ type UpsertBuilder[T any] struct {
 
 type Upsert struct {
 	conflictColumns []string     // 为 sqlite3 ON CONFLICT (id) 这种语法准备的
-	assigns         []Assignable // 插入失败后，更新的字段的切片
+	assigns         []Assignable // 只更新指定字段， name=”zheng“
 }
 
 func (o *UpsertBuilder[T]) ConflictColumns(cols ...string) *UpsertBuilder[T] {
@@ -167,7 +166,7 @@ func (i *Inserter[T]) Build() (*Query, error) {
 	}, nil
 }
 
-func (i *Inserter[T]) Exec(ctx context.Context) sql.Result {
+func (i *Inserter[T]) Exec(ctx context.Context) Result {
 	q, err := i.Build()
 	if err != nil {
 		return Result{err: err}

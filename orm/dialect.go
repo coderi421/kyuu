@@ -58,8 +58,10 @@ func (m *mysqlDialect) buildUpsert(b *builder, u *Upsert) error {
 			if err != nil {
 				return err
 			}
-			b.sb.WriteString("=?")
-			b.addArgs(assign.val)
+			b.sb.WriteString("=")
+			return b.buildExpression(assign.val)
+			//b.sb.WriteString("=?")
+			//b.addArgs(assign.val)
 		default:
 			return errs.NewErrUnsupportedAssignableType(assign)
 		}
@@ -110,8 +112,10 @@ func (s *sqlite3Dialect) buildUpsert(b *builder, u *Upsert) error {
 			if err != nil {
 				return err
 			}
-			b.sb.WriteString("=?")
-			b.addArgs(assign.val)
+			b.sb.WriteString("=")
+			return b.buildExpression(assign.val)
+			//b.sb.WriteString("=?")
+			//b.addArgs(assign.val)
 		default:
 			return errs.NewErrUnsupportedAssignableType(assign)
 		}
