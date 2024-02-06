@@ -37,8 +37,11 @@ func (o *UpsertBuilder[T]) Update(assigns ...Assignable) *Inserter[T] {
 
 type Inserter[T any] struct {
 	builder
-	values  []*T     // 缓存要插入的数据
-	db      *DB      // 注册映射关系的实例，以及使用哪种映射方法的实例，以及 DB 实例
+	values []*T // 缓存要插入的数据
+
+	core
+	//	db      *DB      // 注册映射关系的实例，以及使用哪种映射方法的实例，以及 DB 实例
+	sess    session  // db is the DB instance used for executing the query.
 	columns []string // update 语句中，要更新哪些字段
 	// 方案二
 	upsert *Upsert // 对应存在即更新语句： ON DUPLICATE KEY UPDATE
@@ -47,12 +50,14 @@ type Inserter[T any] struct {
 	// upsert []Assignable
 }
 
-func NewInserter[T any](db *DB) *Inserter[T] {
+func NewInserter[T any](sess session) *Inserter[T] {
+	c := sess.getCore()
 	return &Inserter[T]{
-		db: db,
+		sess: sess,
+		core: c,
 		builder: builder{
-			dialect: db.dialect,
-			quoter:  db.dialect.quoter(),
+			dialect: c.dialect,
+			quoter:  c.dialect.quoter(),
 		},
 	}
 }
@@ -93,7 +98,7 @@ func (i *Inserter[T]) Build() (*Query, error) {
 		return nil, errs.ErrInsertZeroRow
 	}
 	// 由于多条数据都一样，同一个 struct 所以这里处理第一条就可以拿到 db field 和 struct 的映射关系
-	m, err := i.db.r.Get(i.values[0])
+	m, err := i.r.Get(i.values[0])
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +137,7 @@ func (i *Inserter[T]) Build() (*Query, error) {
 		}
 		// 由于是泛型，所以这里使用反射取值
 		//refVal := reflect.ValueOf(val).Elem()
-		refVal := i.db.valCreator(val, i.model)
+		refVal := i.valCreator(val, i.model)
 
 		i.sb.WriteByte('(')
 		for fIdx, field := range fields {
@@ -153,7 +158,7 @@ func (i *Inserter[T]) Build() (*Query, error) {
 	}
 
 	if i.upsert != nil {
-		err = i.dialect.buildUpsert(&i.builder, i.upsert)
+		err = i.core.dialect.buildUpsert(&i.builder, i.upsert)
 		if err != nil {
 			return nil, err
 		}
@@ -171,7 +176,7 @@ func (i *Inserter[T]) Exec(ctx context.Context) Result {
 	if err != nil {
 		return Result{err: err}
 	}
-	res, err := i.db.db.ExecContext(ctx, q.SQL, q.Args...)
+	res, err := i.sess.execContext(ctx, q.SQL, q.Args...)
 	return Result{
 		err: err,
 		res: res,

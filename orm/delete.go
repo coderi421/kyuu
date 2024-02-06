@@ -1,20 +1,26 @@
 package orm
 
+import "context"
+
 type Deleter[T any] struct {
 	builder
 
 	table string
 	where []Predicate
-	db    *DB
+	core
+	//	db      *DB      // 注册映射关系的实例，以及使用哪种映射方法的实例，以及 DB 实例
+	sess session // db is the DB instance used for executing the
 }
 
 // NewSelector creates a new instance of Selector.
-func NewDeleter[T any](db *DB) *Deleter[T] {
+func NewDeleter[T any](sess session) *Deleter[T] {
+	c := sess.getCore()
 	return &Deleter[T]{
-		db: db,
+		core: c,
+		sess: sess,
 		builder: builder{
-			dialect: db.dialect,
-			quoter:  db.dialect.quoter(),
+			dialect: c.dialect,
+			quoter:  c.dialect.quoter(),
 		},
 	}
 }
@@ -29,7 +35,7 @@ func (d *Deleter[T]) Build() (*Query, error) {
 	)
 
 	// 从缓存中读取model
-	d.model, err = d.db.r.Get(&t)
+	d.model, err = d.r.Get(&t)
 	if err != nil {
 		return nil, err
 	}
@@ -76,4 +82,16 @@ func (d *Deleter[T]) From(table string) *Deleter[T] {
 func (d *Deleter[T]) Where(predicates ...Predicate) *Deleter[T] {
 	d.where = predicates
 	return d
+}
+
+func (i *Deleter[T]) Exec(ctx context.Context) Result {
+	q, err := i.Build()
+	if err != nil {
+		return Result{err: err}
+	}
+	res, err := i.sess.execContext(ctx, q.SQL, q.Args...)
+	return Result{
+		err: err,
+		res: res,
+	}
 }

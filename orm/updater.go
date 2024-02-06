@@ -7,19 +7,23 @@ import (
 
 type Updater[T any] struct {
 	builder
-	db      *DB
+	core
+	//db      *DB // db is the DB instance used for executing the query.
+	sess    session      // db is the DB instance used for executing the query.
 	assigns []Assignable // 由于处理 name=zheng
 	val     *T           // 更新用的结构体
 	where   []Predicate
 }
 
-func NewUpdater[T any](db *DB) *Updater[T] {
+func NewUpdater[T any](sess session) *Updater[T] {
+	c := sess.getCore()
 	return &Updater[T]{
 		builder: builder{
-			dialect: db.dialect,
-			quoter:  db.dialect.quoter(),
+			dialect: c.dialect,
+			quoter:  c.dialect.quoter(),
 		},
-		db: db,
+		core: c,
+		sess: sess,
 	}
 }
 
@@ -44,7 +48,7 @@ func (u *Updater[T]) Build() (*Query, error) {
 	)
 
 	// 创建映射实体类
-	u.model, err = u.db.r.Get(&t)
+	u.model, err = u.r.Get(&t)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +56,7 @@ func (u *Updater[T]) Build() (*Query, error) {
 	u.sb.WriteString("UPDATE ")
 	u.quote(u.model.TableName)
 	u.sb.WriteString(" SET ")
-	val := u.db.valCreator(u.val, u.model)
+	val := u.valCreator(u.val, u.model)
 	for i, a := range u.assigns {
 		if i > 0 {
 			u.sb.WriteByte(',')
@@ -114,7 +118,7 @@ func (u *Updater[T]) Exec(ctx context.Context) Result {
 			err: err,
 		}
 	}
-	res, err := u.db.db.ExecContext(ctx, q.SQL, q.Args)
+	res, err := u.sess.execContext(ctx, q.SQL, q.Args)
 	return Result{
 		err: err,
 		res: res,
