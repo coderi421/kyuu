@@ -59,3 +59,8 @@ func NewErrUnsupportedSelectable(exp any) error {
 func NewErrInvalidTagContent(tag string) error {
 	return fmt.Errorf("orm: 错误的标签设置: %s", tag)
 }
+
+func NewErrFailToRollbackTx(bizErr error, rbErr error, panicked bool) error {
+	return fmt.Errorf("orm: 回滚事务失败, 业务错误 %w, 回滚错误 %s, panic: %t",
+		bizErr, rbErr.Error(), panicked)
+}

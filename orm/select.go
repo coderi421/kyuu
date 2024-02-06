@@ -15,7 +15,10 @@ type Selector[T any] struct {
 	where  []Predicate // where holds the WHERE predicates for the query.
 	having []Predicate
 
-	db      *DB // db is the DB instance used for executing the query.
+	core
+	//db      *DB // db is the DB instance used for executing the query.
+	sess session // db is the DB instance used for executing the query.
+
 	columns []Selectable
 	groupBy []Column
 	orderBy []OrderBy
@@ -24,12 +27,14 @@ type Selector[T any] struct {
 }
 
 // NewSelector creates a new instance of Selector.
-func NewSelector[T any](db *DB) *Selector[T] {
+func NewSelector[T any](sess session) *Selector[T] {
+	c := sess.getCore()
 	return &Selector[T]{
-		db: db,
+		core: c,
+		sess: sess,
 		builder: builder{
-			quoter:  db.dialect.quoter(),
-			dialect: db.dialect,
+			quoter:  c.dialect.quoter(),
+			dialect: c.dialect,
 		},
 	}
 }
@@ -55,7 +60,7 @@ func (s *Selector[T]) Build() (*Query, error) {
 		err error
 	)
 
-	s.model, err = s.db.r.Get(&t)
+	s.model, err = s.r.Get(&t)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +246,7 @@ func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
 	// s.db 是我们定义的 DB
 	// s.db.db 则是 sql.DB
 	// 使用 QueryContext，从而和 GetMulti 能够复用处理结果集的代码
-	rows, err := s.db.db.QueryContext(ctx, q.SQL, q.Args...)
+	rows, err := s.sess.queryContext(ctx, q.SQL, q.Args...)
 	if err != nil {
 		return nil, err
 	}
@@ -252,13 +257,13 @@ func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
 
 	// 创建与 db table 对应的 *struct
 	tp := new(T)
-	meta, err := s.db.r.Get(tp)
+	meta, err := s.r.Get(tp)
 	if err != nil {
 		return nil, err
 	}
 
 	// 开始进行映射 db table 和 struct 的关系
-	val := s.db.valCreator(tp, meta)
+	val := s.valCreator(tp, meta)
 	// 使用存在映射关系的实体 val， 将 rows 中的数据 映射到 *struct[T] 中
 	err = val.SetColumns(rows)
 
@@ -271,7 +276,7 @@ func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 		return nil, err
 	}
 
-	rows, err := s.db.db.QueryContext(ctx, q.SQL, q.Args)
+	rows, err := s.sess.queryContext(ctx, q.SQL, q.Args)
 	if err != nil {
 		return nil, err
 	}
