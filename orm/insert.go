@@ -2,6 +2,7 @@ package orm
 
 import (
 	"context"
+	"database/sql"
 	"github.com/coderi421/kyuu/orm/internal/errs"
 	"github.com/coderi421/kyuu/orm/model"
 )
@@ -172,13 +173,42 @@ func (i *Inserter[T]) Build() (*Query, error) {
 }
 
 func (i *Inserter[T]) Exec(ctx context.Context) Result {
-	q, err := i.Build()
-	if err != nil {
-		return Result{err: err}
+	var handler Handler = i.execHandler
+	middlewares := i.mdls
+	for j := len(middlewares) - 1; j >= 0; j-- {
+		handler = middlewares[j](handler)
 	}
-	res, err := i.sess.execContext(ctx, q.SQL, q.Args...)
+
+	qc := &QueryContext{
+		Builder: i,
+		Type:    "INSERT",
+	}
+
+	res := handler(ctx, qc)
+	if res.Result != nil {
+		return Result{
+			err: res.Err,
+			res: res.Result.(sql.Result),
+		}
+	}
+
 	return Result{
-		err: err,
-		res: res,
+		err: res.Err,
+	}
+}
+
+func (i *Inserter[T]) execHandler(ctx context.Context, qc *QueryContext) *QueryResult {
+	q, err := qc.Builder.Build()
+	if err != nil {
+		return &QueryResult{
+			Err: err,
+		}
+	}
+
+	res, err := i.sess.execContext(ctx, q.SQL, q.Args...)
+
+	return &QueryResult{
+		Result: res,
+		Err:    err,
 	}
 }
