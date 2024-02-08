@@ -3,10 +3,14 @@ package orm
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
+	"errors"
+	"fmt"
 	"github.com/coderi421/kyuu/orm/internal/errs"
 	"github.com/coderi421/kyuu/orm/internal/valuer/reflect"
 	"github.com/coderi421/kyuu/orm/internal/valuer/unsafe"
 	"github.com/coderi421/kyuu/orm/model"
+	"time"
 )
 
 type DBOption func(*DB)
@@ -168,4 +172,36 @@ func (db *DB) queryContext(ctx context.Context, query string, args ...any) (*sql
 
 func (db *DB) execContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return db.db.ExecContext(ctx, query, args...)
+}
+
+// Wait waits for the database connection to be established.
+// It retries pinging the database until a successful connection is made.
+// Returns an error if the connection cannot be established.
+func (db *DB) Wait() error {
+	// Set the timeout duration to 3 minutes
+	timeout := time.Now().Add(3 * time.Minute)
+
+	// Ping the database
+	err := db.db.Ping()
+
+	// Retry pinging the database until a successful connection is made
+	for errors.Is(err, driver.ErrBadConn) {
+		// Disconnect if the timeout duration is exceeded
+		if time.Now().After(timeout) {
+			errClose := db.db.Close()
+			if errClose != nil {
+				return errClose
+			}
+			return fmt.Errorf("connection timed out")
+		}
+
+		// Wait for 1 second before retrying
+		time.Sleep(1 * time.Second)
+
+		// Ping the database again
+		err = db.db.Ping()
+	}
+
+	// Return nil error if the connection is established successfully
+	return nil
 }
