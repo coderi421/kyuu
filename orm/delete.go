@@ -2,7 +2,6 @@ package orm
 
 import (
 	"context"
-	"database/sql"
 )
 
 type Deleter[T any] struct {
@@ -88,42 +87,8 @@ func (d *Deleter[T]) Where(predicates ...Predicate) *Deleter[T] {
 }
 
 func (d *Deleter[T]) Exec(ctx context.Context) Result {
-	var handler Handler = d.execHandler
-	middlewares := d.mdls
-	for j := len(middlewares) - 1; j >= 0; j-- {
-		handler = middlewares[j](handler)
-	}
-
-	qc := &QueryContext{
+	return exec(ctx, d.sess, d.core, &QueryContext{
 		Builder: d,
 		Type:    "DELETE",
-	}
-
-	res := handler(ctx, qc)
-	if res.Result != nil {
-		return Result{
-			err: res.Err,
-			res: res.Result.(sql.Result),
-		}
-	}
-
-	return Result{
-		err: res.Err,
-	}
-}
-
-func (d *Deleter[T]) execHandler(ctx context.Context, qc *QueryContext) *QueryResult {
-	q, err := qc.Builder.Build()
-	if err != nil {
-		return &QueryResult{
-			Err: err,
-		}
-	}
-
-	res, err := d.sess.execContext(ctx, q.SQL, q.Args...)
-
-	return &QueryResult{
-		Result: res,
-		Err:    err,
-	}
+	})
 }

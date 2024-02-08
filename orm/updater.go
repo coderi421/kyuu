@@ -2,7 +2,6 @@ package orm
 
 import (
 	"context"
-	"database/sql"
 	"github.com/coderi421/kyuu/orm/internal/errs"
 )
 
@@ -113,41 +112,9 @@ func (u *Updater[T]) Where(ps ...Predicate) *Updater[T] {
 }
 
 func (u *Updater[T]) Exec(ctx context.Context) Result {
-	var handler Handler = u.execHandler
-	middlewares := u.mdls
-	for j := len(middlewares) - 1; j >= 0; j-- {
-		handler = middlewares[j](handler)
-	}
 
-	qc := &QueryContext{
+	return exec(ctx, u.sess, u.core, &QueryContext{
 		Builder: u,
 		Type:    "UPDATE",
-	}
-
-	res := handler(ctx, qc)
-	if res.Result != nil {
-		return Result{
-			err: res.Err,
-			res: res.Result.(sql.Result),
-		}
-	}
-
-	return Result{
-		err: res.Err,
-	}
-}
-func (u *Updater[T]) execHandler(ctx context.Context, qc *QueryContext) *QueryResult {
-	q, err := qc.Builder.Build()
-	if err != nil {
-		return &QueryResult{
-			Err: err,
-		}
-	}
-
-	res, err := u.sess.execContext(ctx, q.SQL, q.Args...)
-
-	return &QueryResult{
-		Result: res,
-		Err:    err,
-	}
+	})
 }

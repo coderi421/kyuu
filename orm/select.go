@@ -238,26 +238,17 @@ func (s *Selector[T]) OrderBy(orderBys ...OrderBy) *Selector[T] {
 
 // Get 根据拼接成的 sql 文，到 db 中获取数据
 func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
-	// 获取跟节点
-	var handler Handler = s.getHandler
-	middlewares := s.mdls
-	for i := len(middlewares) - 1; i >= 0; i-- {
-		handler = middlewares[i](handler)
-	}
-
-	qc := &QueryContext{
+	res := get[T](ctx, s.core, s.sess, &QueryContext{
 		Builder: s,
 		Type:    "SELECT",
-	}
-
-	res := handler(ctx, qc)
+	})
 	if res.Result != nil {
 		return res.Result.(*T), res.Err
 	}
-
 	return nil, res.Err
 }
 
+// GetMulti TODO
 func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 	q, err := s.Build()
 	if err != nil {
@@ -284,50 +275,6 @@ func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 	}
 
 	return nil, nil
-}
-
-func (s *Selector[T]) getHandler(ctx context.Context, qc *QueryContext) *QueryResult {
-	q, err := qc.Builder.Build()
-	if err != nil {
-		return &QueryResult{
-			Err: err,
-		}
-	}
-
-	// s.db 是我们定义的 DB
-	// s.db.db 则是 sql.DB
-	// 使用 QueryContext，从而和 GetMulti 能够复用处理结果集的代码
-	rows, err := s.sess.queryContext(ctx, q.SQL, q.Args...)
-	if err != nil {
-		return &QueryResult{
-			Err: err,
-		}
-	}
-
-	if !rows.Next() {
-		return &QueryResult{
-			Err: ErrNoRows,
-		}
-	}
-
-	// 创建与 db table 对应的 *struct
-	tp := new(T)
-	meta, err := s.r.Get(tp)
-	if err != nil {
-		return &QueryResult{
-			Err: err,
-		}
-	}
-
-	// 开始进行映射 db table 和 struct 的关系
-	val := s.valCreator(tp, meta)
-	// 使用存在映射关系的实体 val， 将 rows 中的数据 映射到 *struct[T] 中
-	err = val.SetColumns(rows)
-
-	return &QueryResult{
-		Result: tp,
-		Err:    err,
-	}
 }
 
 func (s *Selector[T]) buildColumn(c Column, useAlias bool) error {
