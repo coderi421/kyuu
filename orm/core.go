@@ -9,5 +9,5 @@ type core struct {
 	dialect    Dialect
 	r          model.Registry // 存储数据库表和 struct 映射关系的实例
 	valCreator valuer.Creator // 与DB交互映射的实现
-	//ms         []Middleware
+	mdls       []Middleware
 }

@@ -160,9 +160,9 @@ func (b *builder) buildAggregate(a Aggregate, useAlias bool) error {
 	}
 
 	b.sb.WriteString(a.fn)
-	b.sb.WriteString("(`")
-	b.sb.WriteString(fd.ColName)
-	b.sb.WriteString("`)")
+	b.sb.WriteByte('(')
+	b.quote(fd.ColName)
+	b.sb.WriteByte(')')
 	if useAlias {
 		b.buildAs(a.alias)
 	}

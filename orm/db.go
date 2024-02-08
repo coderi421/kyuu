@@ -60,6 +60,13 @@ func DBWithDialect(d Dialect) DBOption {
 	}
 }
 
+func DBWithMiddlewares(mdls ...Middleware) DBOption {
+	return func(db *DB) {
+		db.mdls = mdls
+		// db.mdls = append(db.mdls, mdls...)
+	}
+}
+
 // DBWithRegistry 这里可以替换成不同的映射实例
 func DBWithRegistry(r model.Registry) DBOption {
 	return func(db *DB) {
