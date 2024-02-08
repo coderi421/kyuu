@@ -15,9 +15,8 @@ type Selector[T any] struct {
 	where  []Predicate // where holds the WHERE predicates for the query.
 	having []Predicate
 
-	core
 	//db      *DB // db is the DB instance used for executing the query.
-	sess session // db is the DB instance used for executing the query.
+	sess Session // db is the DB instance used for executing the query.
 
 	columns []Selectable
 	groupBy []Column
@@ -27,12 +26,13 @@ type Selector[T any] struct {
 }
 
 // NewSelector creates a new instance of Selector.
-func NewSelector[T any](sess session) *Selector[T] {
+func NewSelector[T any](sess Session) *Selector[T] {
 	c := sess.getCore()
 	return &Selector[T]{
-		core: c,
+
 		sess: sess,
 		builder: builder{
+			core:    c,
 			quoter:  c.dialect.quoter(),
 			dialect: c.dialect,
 		},

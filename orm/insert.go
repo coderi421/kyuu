@@ -2,6 +2,7 @@ package orm
 
 import (
 	"context"
+	"database/sql"
 	"github.com/coderi421/kyuu/orm/internal/errs"
 	"github.com/coderi421/kyuu/orm/model"
 )
@@ -39,9 +40,8 @@ type Inserter[T any] struct {
 	builder
 	values []*T // 缓存要插入的数据
 
-	core
 	//	db      *DB      // 注册映射关系的实例，以及使用哪种映射方法的实例，以及 DB 实例
-	sess    session  // db is the DB instance used for executing the query.
+	sess    Session  // db is the DB instance used for executing the query.
 	columns []string // update 语句中，要更新哪些字段
 	// 方案二
 	upsert *Upsert // 对应存在即更新语句： ON DUPLICATE KEY UPDATE
@@ -50,12 +50,13 @@ type Inserter[T any] struct {
 	// upsert []Assignable
 }
 
-func NewInserter[T any](sess session) *Inserter[T] {
+func NewInserter[T any](sess Session) *Inserter[T] {
 	c := sess.getCore()
 	return &Inserter[T]{
 		sess: sess,
-		core: c,
+
 		builder: builder{
+			core:    c,
 			dialect: c.dialect,
 			quoter:  c.dialect.quoter(),
 		},
@@ -172,8 +173,25 @@ func (i *Inserter[T]) Build() (*Query, error) {
 }
 
 func (i *Inserter[T]) Exec(ctx context.Context) Result {
-	return exec(ctx, i.sess, i.core, &QueryContext{
+	var err error
+	i.model, err = i.r.Get(new(T))
+	if err != nil {
+		return Result{
+			err: err,
+		}
+	}
+
+	res := exec(ctx, i.sess, i.core, &QueryContext{
 		Builder: i,
 		Type:    "INSERT",
 	})
+
+	var sqlRes sql.Result
+	if res.Result != nil {
+		sqlRes = res.Result.(sql.Result)
+	}
+	return Result{
+		err: res.Err,
+		res: sqlRes,
+	}
 }

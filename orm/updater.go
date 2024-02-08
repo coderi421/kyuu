@@ -2,27 +2,28 @@ package orm
 
 import (
 	"context"
+	"database/sql"
 	"github.com/coderi421/kyuu/orm/internal/errs"
 )
 
 type Updater[T any] struct {
 	builder
-	core
 	//db      *DB // db is the DB instance used for executing the query.
-	sess    session      // db is the DB instance used for executing the query.
+	sess    Session      // db is the DB instance used for executing the query.
 	assigns []Assignable // 由于处理 name=zheng
 	val     *T           // 更新用的结构体
 	where   []Predicate
 }
 
-func NewUpdater[T any](sess session) *Updater[T] {
+func NewUpdater[T any](sess Session) *Updater[T] {
 	c := sess.getCore()
 	return &Updater[T]{
 		builder: builder{
+			core:    c,
 			dialect: c.dialect,
 			quoter:  c.dialect.quoter(),
 		},
-		core: c,
+
 		sess: sess,
 	}
 }
@@ -112,9 +113,25 @@ func (u *Updater[T]) Where(ps ...Predicate) *Updater[T] {
 }
 
 func (u *Updater[T]) Exec(ctx context.Context) Result {
+	var err error
+	u.model, err = u.r.Get(new(T))
+	if err != nil {
+		return Result{
+			err: err,
+		}
+	}
 
-	return exec(ctx, u.sess, u.core, &QueryContext{
+	res := exec(ctx, u.sess, u.core, &QueryContext{
 		Builder: u,
 		Type:    "UPDATE",
 	})
+
+	var sqlRes sql.Result
+	if res.Result != nil {
+		sqlRes = res.Result.(sql.Result)
+	}
+	return Result{
+		err: res.Err,
+		res: sqlRes,
+	}
 }

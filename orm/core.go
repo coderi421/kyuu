@@ -8,6 +8,8 @@ import (
 )
 
 type core struct {
+	// 因为 rawquery 需要获取 model 所以这里将 model 提取到 core 中
+	model      *model.Model // model is the model associated with the selector.
 	dialect    Dialect
 	r          model.Registry // 存储数据库表和 struct 映射关系的实例
 	valCreator valuer.Creator // 与DB交互映射的实现
@@ -15,7 +17,7 @@ type core struct {
 }
 
 func getHandler[T any](ctx context.Context,
-	sess session,
+	sess Session,
 	c core,
 	qc *QueryContext) *QueryResult {
 	q, err := qc.Builder.Build()
@@ -59,7 +61,7 @@ func getHandler[T any](ctx context.Context,
 	}
 }
 
-func get[T any](ctx context.Context, c core, sess session, qc *QueryContext) *QueryResult {
+func get[T any](ctx context.Context, c core, sess Session, qc *QueryContext) *QueryResult {
 
 	var handler Handler = func(ctx context.Context, qc *QueryContext) *QueryResult {
 		// 获取跟节点
@@ -72,7 +74,7 @@ func get[T any](ctx context.Context, c core, sess session, qc *QueryContext) *Qu
 	return handler(ctx, qc)
 }
 
-func exec(ctx context.Context, sess session, c core, qc *QueryContext) Result {
+func exec(ctx context.Context, sess Session, c core, qc *QueryContext) *QueryResult {
 
 	var handler Handler = func(ctx context.Context, qc *QueryContext) *QueryResult {
 		return execHandler(ctx, sess, qc)
@@ -87,10 +89,10 @@ func exec(ctx context.Context, sess session, c core, qc *QueryContext) Result {
 	if qr.Result != nil {
 		res = qr.Result.(sql.Result)
 	}
-	return Result{err: qr.Err, res: res}
+	return &QueryResult{Err: qr.Err, Result: res}
 }
 
-func execHandler(ctx context.Context, sess session, qc *QueryContext) *QueryResult {
+func execHandler(ctx context.Context, sess Session, qc *QueryContext) *QueryResult {
 	q, err := qc.Builder.Build()
 	if err != nil {
 		return &QueryResult{

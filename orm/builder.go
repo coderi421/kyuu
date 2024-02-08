@@ -2,16 +2,17 @@ package orm
 
 import (
 	"github.com/coderi421/kyuu/orm/internal/errs"
-	"github.com/coderi421/kyuu/orm/model"
 	"strings"
 )
 
 type builder struct {
-	sb      strings.Builder // sb is used to build the SQL query string.
-	args    []any           // args holds the arguments for the query.
-	model   *model.Model    // model is the model associated with the selector.
-	quoter  byte            // 不同数据库的标点不同，mysql `id_my` postgresql 'id_my'
-	dialect Dialect         // db 初始化的时候，确定的方言  mysql postgresql
+	// 核心的共通部分
+	core
+	sb   strings.Builder // sb is used to build the SQL query string.
+	args []any           // args holds the arguments for the query.
+
+	quoter  byte    // 不同数据库的标点不同，mysql `id_my` postgresql 'id_my'
+	dialect Dialect // db 初始化的时候，确定的方言  mysql postgresql
 }
 
 // type Predicates []Predicate
