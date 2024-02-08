@@ -99,7 +99,7 @@ func (i *Inserter[T]) Build() (*Query, error) {
 		return nil, errs.ErrInsertZeroRow
 	}
 	// 由于多条数据都一样，同一个 struct 所以这里处理第一条就可以拿到 db field 和 struct 的映射关系
-	m, err := i.r.Get(i.values[0])
+	m, err := i.r.Get(new(T))
 	if err != nil {
 		return nil, err
 	}

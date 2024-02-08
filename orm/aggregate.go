@@ -2,14 +2,25 @@ package orm
 
 // Aggregate 代表聚合函数， 例如 AVG, MAX, MIN 等 以及别名
 type Aggregate struct {
+	table TableReference
 	fn    string
 	arg   string
 	alias string
 }
 
-func (a Aggregate) expr() {}
+func (a Aggregate) selectedAlias() string {
+	return a.alias
+}
 
-func (a Aggregate) selectable() {}
+func (a Aggregate) fieldName() string {
+	return a.arg
+}
+
+func (a Aggregate) target() TableReference {
+	return a.table
+}
+
+func (a Aggregate) expr() {}
 
 // As 这里使用 值 作为接收者，可以防止并发问题，每次都返回一个新的；也有小利于垃圾回收，局部之后，变量就会被回收
 func (a Aggregate) As(alias string) Aggregate {

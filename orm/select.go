@@ -11,8 +11,8 @@ type Selector[T any] struct {
 	// select delete update insert 都需要使用
 	builder
 
-	table  string      // table is the name of the table to select from.
-	where  []Predicate // where holds the WHERE predicates for the query.
+	table  TableReference // table is the name of the table to select from.
+	where  []Predicate    // where holds the WHERE predicates for the query.
 	having []Predicate
 
 	//db      *DB // db is the DB instance used for executing the query.
@@ -47,7 +47,7 @@ func (s *Selector[T]) Select(cols ...Selectable) *Selector[T] {
 
 // From sets the table name for the selector.
 // It returns the updated selector.
-func (s *Selector[T]) From(tbl string) *Selector[T] {
+func (s *Selector[T]) From(tbl TableReference) *Selector[T] {
 	s.table = tbl
 	return s
 }
@@ -55,12 +55,9 @@ func (s *Selector[T]) From(tbl string) *Selector[T] {
 // Build generates a SQL query for selecting all columns from a table.
 // It returns the generated query as a *Query struct or an error if there was any.
 func (s *Selector[T]) Build() (*Query, error) {
-	var (
-		t   T
-		err error
-	)
+	var err error
 
-	s.model, err = s.r.Get(&t)
+	s.model, err = s.r.Get(new(T))
 	if err != nil {
 		return nil, err
 	}
@@ -69,14 +66,11 @@ func (s *Selector[T]) Build() (*Query, error) {
 	if err = s.buildColumns(); err != nil {
 		return nil, err
 	}
-	s.sb.WriteString(" FROM ")
 
-	if s.table == "" {
-		// Get the name of the struct using reflection
-		s.quote(s.model.TableName)
-	} else {
-		// 这里没有处理 添加`符号，让用户自己应该名字自己在做什么
-		s.sb.WriteString(s.table)
+	s.sb.WriteString(" FROM ")
+	// 构造 table 部分
+	if err = s.buildTable(s.table); err != nil {
+		return nil, err
 	}
 
 	// construct where
@@ -142,6 +136,65 @@ func (s *Selector[T]) Build() (*Query, error) {
 	}, nil
 }
 
+func (s *Selector[T]) buildTable(table TableReference) error {
+	switch tab := table.(type) {
+	case nil:
+		s.quote(s.model.TableName)
+	case Table:
+		model, err := s.r.Get(tab.entity)
+		if err != nil {
+			return err
+		}
+		s.quote(model.TableName)
+		if tab.alias != "" {
+			s.sb.WriteString(" AS ")
+			s.quote(tab.alias)
+		}
+	case Join:
+		return s.buildJoin(tab)
+	case Subquery:
+		return s.buildSubquery(tab, true)
+	default:
+		return errs.NewErrUnsupportedExpressionType(tab)
+	}
+	return nil
+}
+
+func (s *Selector[T]) buildJoin(tab Join) error {
+	s.sb.WriteByte('(')
+	if err := s.buildTable(tab.left); err != nil {
+		return err
+	}
+	s.sb.WriteString(" ")
+	s.sb.WriteString(tab.typ)
+	s.sb.WriteString(" ")
+	if err := s.buildTable(tab.right); err != nil {
+		return err
+	}
+	if len(tab.using) > 0 {
+		s.sb.WriteString(" USING (")
+		for i, col := range tab.using {
+			if i > 0 {
+				s.sb.WriteByte(',')
+			}
+			err := s.buildColumn(Column{name: col}, false)
+			if err != nil {
+				return err
+			}
+		}
+		s.sb.WriteString(")")
+	}
+	if len(tab.on) > 0 {
+		s.sb.WriteString(" ON ")
+		err := s.buildPredicates(tab.on)
+		if err != nil {
+			return err
+		}
+	}
+	s.sb.WriteByte(')')
+	return nil
+}
+
 func (s *Selector[T]) buildColumns() error {
 	if len(s.columns) == 0 {
 		s.sb.WriteByte('*')
@@ -181,7 +234,7 @@ func (s *Selector[T]) buildOrderBy() error {
 			s.sb.WriteByte(',')
 		}
 
-		err := s.builder.buildColumn(ob.col)
+		err := s.builder.buildColumn(ob.table, ob.col)
 		if err != nil {
 			return err
 		}
@@ -278,7 +331,7 @@ func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 }
 
 func (s *Selector[T]) buildColumn(c Column, useAlias bool) error {
-	err := s.builder.buildColumn(c.name)
+	err := s.builder.buildColumn(c.table, c.name)
 	if err != nil {
 		return err
 	}
@@ -296,28 +349,33 @@ func (s *Selector[T]) buildColumn(c Column, useAlias bool) error {
 //	s.args = append(s.args, args...)
 //}
 
-// Selectable 暂时没什么作用只是用作标记，可检索指定字段的标记
-// 让结构体实现这个接口，就可以传入
-// 使用接口为的是：让 聚合函数， columns， 以及 RawExpr（原生sql） 都能作为参数传入统一个函数，做统一处理
-type Selectable interface {
-	selectable()
-}
-
 type OrderBy struct {
+	table TableReference
 	col   string
 	order string
 }
 
-func ASC(col string) OrderBy {
+func ASC(col Column) OrderBy {
 	return OrderBy{
-		col:   col,
+		table: col.table,
+		col:   col.name,
 		order: "ASC",
 	}
 }
 
-func Desc(col string) OrderBy {
+func Desc(col Column) OrderBy {
 	return OrderBy{
-		col:   col,
+		table: col.table,
+		col:   col.name,
 		order: "DESC",
 	}
+}
+
+// Selectable 暂时没什么作用只是用作标记，可检索指定字段的标记
+// 让结构体实现这个接口，就可以传入
+// 使用接口为的是：让 聚合函数， columns， 以及 RawExpr（原生sql） 都能作为参数传入统一个函数，做统一处理
+type Selectable interface {
+	selectedAlias() string
+	fieldName() string
+	target() TableReference
 }

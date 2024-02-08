@@ -7,7 +7,17 @@ type RawExpr struct {
 	args []any
 }
 
-func (r RawExpr) selectable() {}
+func (r RawExpr) selectedAlias() string {
+	return ""
+}
+
+func (r RawExpr) fieldName() string {
+	return ""
+}
+
+func (r RawExpr) target() TableReference {
+	return nil
+}
 
 func (r RawExpr) expr() {}
 
@@ -56,3 +66,37 @@ func (m MathExpr) Multi(val any) MathExpr {
 }
 
 func (m MathExpr) expr() {}
+
+// SubqueryExpr 注意，这个谓词这种不是在所有的数据库里面都支持的
+// 这里采取的是和 Upsert 不同的做法
+// Upsert 里面我们是属于用 dialect 来区别不同的实现
+// 这里我们采用另外一种方案，就是直接生成，依赖于数据库来报错
+// 实际中两种方案你可以自由替换
+type SubqueryExpr struct {
+	s Subquery
+	// 谓词，ALL，ANY 或者 SOME
+	pred string
+}
+
+func (SubqueryExpr) expr() {}
+
+func Any(sub Subquery) SubqueryExpr {
+	return SubqueryExpr{
+		s:    sub,
+		pred: "ANY",
+	}
+}
+
+func All(sub Subquery) SubqueryExpr {
+	return SubqueryExpr{
+		s:    sub,
+		pred: "ALL",
+	}
+}
+
+func Some(sub Subquery) SubqueryExpr {
+	return SubqueryExpr{
+		s:    sub,
+		pred: "SOME",
+	}
+}

@@ -54,7 +54,7 @@ func (m *mysqlDialect) buildUpsert(b *builder, u *Upsert) error {
 			b.sb.WriteByte(')')
 		case Assignment:
 			// "INSERT INTO `test_model`(`id`,`first_name`,`age`,`last_name`) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE `first_name`=?;"
-			err := b.buildColumn(assign.column)
+			err := b.buildColumn(nil, assign.column)
 			if err != nil {
 				return err
 			}
@@ -85,7 +85,7 @@ func (s *sqlite3Dialect) buildUpsert(b *builder, u *Upsert) error {
 			if i > 0 {
 				b.sb.WriteByte(',')
 			}
-			err := b.buildColumn(col)
+			err := b.buildColumn(nil, col)
 			if err != nil {
 				return err
 			}
@@ -98,26 +98,26 @@ func (s *sqlite3Dialect) buildUpsert(b *builder, u *Upsert) error {
 		if idx > 0 {
 			b.sb.WriteByte(',')
 		}
-		switch assign := assign.(type) {
+		switch a := assign.(type) {
 		case Column:
-			fd, ok := b.model.FieldMap[assign.name]
+			fd, ok := b.model.FieldMap[a.name]
 			if !ok {
-				return errs.NewErrUnknownField(assign.name)
+				return errs.NewErrUnknownField(a.name)
 			}
 			b.quote(fd.ColName)
 			b.sb.WriteString("=excluded.")
 			b.quote(fd.ColName)
 		case Assignment:
-			err := b.buildColumn(assign.column)
+			err := b.buildColumn(nil, a.column)
 			if err != nil {
 				return err
 			}
 			b.sb.WriteString("=")
-			return b.buildExpression(assign.val)
+			return b.buildExpression(a.val)
 			//b.sb.WriteString("=?")
 			//b.addArgs(assign.val)
 		default:
-			return errs.NewErrUnsupportedAssignableType(assign)
+			return errs.NewErrUnsupportedAssignableType(a)
 		}
 	}
 	return nil

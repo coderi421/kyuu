@@ -64,7 +64,7 @@ func (u *Updater[T]) Build() (*Query, error) {
 		}
 		switch assign := a.(type) {
 		case Column:
-			if err = u.buildColumn(assign.name); err != nil {
+			if err = u.buildColumn(assign.table, assign.name); err != nil {
 				return nil, err
 			}
 			u.sb.WriteString("=?")
@@ -96,8 +96,9 @@ func (u *Updater[T]) Build() (*Query, error) {
 	}, nil
 }
 
+// 直接插入字段，没有表级别的限制
 func (u *Updater[T]) buildAssignment(assign Assignment) error {
-	if err := u.buildColumn(assign.column); err != nil {
+	if err := u.buildColumn(nil, assign.column); err != nil {
 		return err
 	}
 	u.sb.WriteByte('=')

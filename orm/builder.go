@@ -72,7 +72,7 @@ func (b *builder) buildExpression(e Expression) error {
 		//expr.alias = ""
 		// Append column name to the SQL query
 		// WHERE 中的条件 不允许用别名
-		return b.buildColumn(expr.name)
+		return b.buildColumn(expr.table, expr.name)
 	case Aggregate:
 		//ex. HAVING AVG(`age`) = ?;
 		return b.buildAggregate(expr, false)
@@ -132,6 +132,12 @@ func (b *builder) buildExpression(e Expression) error {
 		//if rp {
 		//	b.sb.WriteByte(')')
 		//}
+	case SubqueryExpr:
+		b.sb.WriteString(expr.pred)
+		b.sb.WriteByte(' ')
+		return b.buildSubquery(expr.s, false)
+	case Subquery:
+		return b.buildSubquery(expr, false)
 	case binaryExpr:
 		return b.buildBinaryExpr(expr)
 	default:
@@ -141,31 +147,98 @@ func (b *builder) buildExpression(e Expression) error {
 	return nil
 }
 
-func (b *builder) buildColumn(fd string) error {
+func (b *builder) buildColumn(table TableReference, fd string) error {
+	// Join 的时候可能使用的 struct 不是 初始化 builder 时候的 struct
 	// 找到表中对应名字
-	meta, ok := b.model.FieldMap[fd]
-	if !ok {
-		return errs.NewErrUnknownField(fd)
+	//meta, ok := b.model.FieldMap[fd]
+	//if !ok {
+	//	return errs.NewErrUnknownField(fd)
+	//}
+	var alias string
+	if table != nil {
+		alias = table.tableAlias()
 	}
-	b.quote(meta.ColName)
+	if alias != "" {
+		b.quote(alias)
+		b.sb.WriteByte('.')
+	}
+	colName, err := b.colName(table, fd)
+	if err != nil {
+		return err
+	}
+	b.quote(colName)
 	// from 后的部分不需要 使用 as 别名
 	return nil
 }
+
+func (b *builder) colName(table TableReference, fd string) (string, error) {
+	switch tab := table.(type) {
+	case nil:
+		fdMeta, ok := b.model.FieldMap[fd]
+		if !ok {
+			return "", errs.NewErrUnknownField(fd)
+		}
+		return fdMeta.ColName, nil
+	case Table:
+		// 这里处理的是 join 中其他表的字段名称
+		/*
+			t1 := TableOf(&Order{}).As("t1")
+							t2 := TableOf(&OrderDetail{}).As("t2")
+							t3 := t1.Join(t2).On(t1.C("Id").EQ(t2.C("OrderId")))
+							t4 := TableOf(&Item{}).As("t4")
+							t5 := t3.Join(t4).On(t2.C("ItemId").EQ(t4.C("Id")))
+							return NewSelector[Order](db).From(t5)
+		*/
+		m, err := b.r.Get(tab.entity)
+		if err != nil {
+			return "", err
+		}
+		fdMeta, ok := m.FieldMap[fd]
+		if !ok {
+			return "", errs.NewErrUnknownField(fd)
+		}
+		return fdMeta.ColName, nil
+	default:
+		return "", errs.NewErrUnsupportedExpressionType(tab)
+	}
+}
+
 func (b *builder) buildAggregate(a Aggregate, useAlias bool) error {
 	// 找到表中对应名字
 	// 这里使用 ORM 的时候，默认使用 struct 的名字作为 column 检索字段
 	// for example: Id, Age 然后到内存中储存的 map 中找对应的表中的字段名称
-	fd, ok := b.model.FieldMap[a.arg]
-	if !ok {
-		return errs.NewErrUnknownField(a.arg)
-	}
+	//fd, ok := b.model.FieldMap[a.arg]
+	//if !ok {
+	//	return errs.NewErrUnknownField(a.arg)
+	//}
 
 	b.sb.WriteString(a.fn)
 	b.sb.WriteByte('(')
-	b.quote(fd.ColName)
+	err := b.buildColumn(a.table, a.arg)
+	if err != nil {
+		return err
+	}
 	b.sb.WriteByte(')')
 	if useAlias {
 		b.buildAs(a.alias)
+	}
+	return nil
+}
+
+func (b *builder) buildSubquery(tab Subquery, useAlias bool) error {
+	q, err := tab.s.Build()
+	if err != nil {
+		return err
+	}
+	b.sb.WriteByte('(')
+	b.sb.WriteString(q.SQL[:len(q.SQL)-1])
+	if len(q.Args) > 0 {
+		b.addArgs(q.Args...)
+	}
+	b.sb.WriteByte(')')
+	if useAlias {
+		b.sb.WriteString(" AS ")
+		b.quote(tab.alias)
 	}
 	return nil
 }
