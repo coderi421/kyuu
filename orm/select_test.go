@@ -200,6 +200,7 @@ func TestSelector_Build(t *testing.T) {
 	}
 }
 
+// TODO 添加 join 后的 GroupBy
 func TestSelector_GroupBy(t *testing.T) {
 	db := memoryDB(t)
 	testCases := []struct {
@@ -248,6 +249,7 @@ func TestSelector_GroupBy(t *testing.T) {
 	}
 }
 
+// TODO 添加 join 后的 Having
 func TestSelector_Having(t *testing.T) {
 	db := memoryDB(t)
 	testCases := []struct {
