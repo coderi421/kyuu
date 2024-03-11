@@ -40,3 +40,14 @@ func memoryDBWithDB(db string, t *testing.T) *DB {
 	}
 	return orm
 }
+
+type TestModelWithTableName struct {
+	Id        int64
+	FirstName string
+	Age       int8
+	LastName  *sql.NullString
+}
+
+func (t TestModelWithTableName) TableName() string {
+	return "test_model_with_table_name"
+}

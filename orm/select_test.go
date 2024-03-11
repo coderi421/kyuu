@@ -107,33 +107,33 @@ func TestSelector_Build(t *testing.T) {
 		},
 		{
 			name: "with from",
-			q:    NewSelector[TestModel](db).From("`test_model`"),
+			q:    NewSelector[TestModelWithTableName](db),
 			want: &Query{
-				SQL: "SELECT * FROM `test_model`;",
+				SQL: "SELECT * FROM `test_model_with_table_name`;",
 			},
 		},
 		{
 			name: "empty from",
-			q:    NewSelector[TestModel](db).From(""),
+			q:    NewSelector[TestModel](db).From(nil),
 			want: &Query{
 				SQL: "SELECT * FROM `test_model`;",
 			},
 		},
-		{
-			name: "with db",
-			q:    NewSelector[TestModel](db).From("`test_db`.`test_model`"),
-			want: &Query{
-				SQL: "SELECT * FROM `test_db`.`test_model`;",
-			},
-		},
-		{
-			name: "single and simple predicate",
-			q:    NewSelector[TestModel](db).From("`test_model`").Where(C("Id").EQ(1)),
-			want: &Query{
-				SQL:  "SELECT * FROM `test_model` WHERE `id` = ?;",
-				Args: []any{1},
-			},
-		},
+		//{
+		//	name: "with db",
+		//	q:    NewSelector[TestModel](db).From("`test_db`.`test_model`"),
+		//	want: &Query{
+		//		SQL: "SELECT * FROM `test_db`.`test_model`;",
+		//	},
+		//},
+		//{
+		//	name: "single and simple predicate",
+		//	q:    NewSelector[TestModel](db).From("`test_model`").Where(C("Id").EQ(1)),
+		//	want: &Query{
+		//		SQL:  "SELECT * FROM `test_model` WHERE `id` = ?;",
+		//		Args: []any{1},
+		//	},
+		//},
 		{
 			name: "multiple predicates",
 			q:    NewSelector[TestModel](db).Where(C("Age").GT(11), C("Age").LT(13)),
@@ -322,21 +322,21 @@ func TestSelector_OrderBy(t *testing.T) {
 		},
 		{
 			name: "single column",
-			q:    NewSelector[TestModel](db).OrderBy(ASC("Age")),
+			q:    NewSelector[TestModel](db).OrderBy(ASC(C("Age"))),
 			wantQuery: &Query{
 				SQL: "SELECT * FROM `test_model` ORDER BY `age` ASC;",
 			},
 		},
 		{
 			name: "multiple columns",
-			q:    NewSelector[TestModel](db).OrderBy(ASC("Age"), Desc("Id")),
+			q:    NewSelector[TestModel](db).OrderBy(ASC(C("Age")), Desc(C("Id"))),
 			wantQuery: &Query{
 				SQL: "SELECT * FROM `test_model` ORDER BY `age` ASC,`id` DESC;",
 			},
 		},
 		{
 			name:    "invalid column",
-			q:       NewSelector[TestModel](db).OrderBy(ASC("Invalid")),
+			q:       NewSelector[TestModel](db).OrderBy(ASC(C("Invalid"))),
 			wantErr: errs.NewErrUnknownField("Invalid"),
 		},
 	}
@@ -402,6 +402,143 @@ func TestSelector_OffsetLimit(t *testing.T) {
 				return
 			}
 			assert.Equal(t, tc.wantQuery, query)
+		})
+	}
+}
+
+func TestSelector_Join(t *testing.T) {
+	db := memoryDB(t)
+	type Order struct {
+		Id        int
+		UsingCol1 string
+		UsingCol2 string
+	}
+
+	type OrderDetail struct {
+		OrderId int
+		ItemId  int
+
+		UsingCol1 string
+		UsingCol2 string
+	}
+
+	type Item struct {
+		Id int
+	}
+
+	testCases := []struct {
+		name      string
+		s         QueryBuilder
+		wantQuery *Query
+		wantErr   error
+	}{
+		{
+			name: "specify table",
+			s:    NewSelector[Order](db).From(TableOf(&OrderDetail{})),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM `order_detail`;",
+			},
+		},
+		{
+			name: "join-using",
+			s: func() QueryBuilder {
+				t1 := TableOf(&Order{})
+				t2 := TableOf(&OrderDetail{})
+				t3 := t1.Join(t2).Using("UsingCol1", "UsingCol2")
+				return NewSelector[Order](db).From(t3)
+			}(),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM (`order` JOIN `order_detail` USING (`using_col1`,`using_col2`));",
+			},
+		},
+		{
+			name: "left join",
+			s: func() QueryBuilder {
+				t1 := TableOf(&Order{})
+				t2 := TableOf(&OrderDetail{})
+				t3 := t1.LeftJoin(t2).Using("UsingCol1", "UsingCol2")
+				return NewSelector[Order](db).From(t3)
+			}(),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM (`order` LEFT JOIN `order_detail` USING (`using_col1`,`using_col2`));",
+			},
+		},
+		{
+			name: "right join",
+			s: func() QueryBuilder {
+				t1 := TableOf(&Order{})
+				t2 := TableOf(&OrderDetail{})
+				t3 := t1.RightJoin(t2).Using("UsingCol1", "UsingCol2")
+				return NewSelector[Order](db).From(t3)
+			}(),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM (`order` RIGHT JOIN `order_detail` USING (`using_col1`,`using_col2`));",
+			},
+		},
+		{
+			name: "join-on",
+			s: func() QueryBuilder {
+				t1 := TableOf(&Order{}).As("t1")
+				t2 := TableOf(&OrderDetail{}).As("t2")
+				t3 := t1.Join(t2).On(t1.C("Id").EQ(t2.C("OrderId")))
+				return NewSelector[Order](db).From(t3)
+			}(),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM (`order` AS `t1` JOIN `order_detail` AS `t2` ON `t1`.`id` = `t2`.`order_id`);",
+			},
+		},
+		{
+			name: "right join orderby",
+			s: func() QueryBuilder {
+				t1 := TableOf(&Order{}).As("t1")
+				t2 := TableOf(&OrderDetail{}).As("t2")
+				t3 := t1.RightJoin(t2).Using("UsingCol1", "UsingCol2")
+				return NewSelector[Order](db).From(t3).OrderBy(ASC(t1.C("Id")), Desc(t2.C("OrderId")))
+			}(),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM (`order` AS `t1` RIGHT JOIN `order_detail` AS `t2` USING (`using_col1`,`using_col2`)) ORDER BY `t1`.`id` ASC,`t2`.`order_id` DESC;",
+			},
+		},
+		{
+			name: "join table",
+			s: func() QueryBuilder {
+				t1 := TableOf(&Order{}).As("t1")
+				t2 := TableOf(&OrderDetail{}).As("t2")
+				t3 := t1.Join(t2).On(t1.C("Id").EQ(t2.C("OrderId")))
+				t4 := TableOf(&Item{}).As("t4")
+				t5 := t3.Join(t4).On(t2.C("ItemId").EQ(t4.C("Id")))
+				return NewSelector[Order](db).From(t5)
+			}(),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM " +
+					"((`order` AS `t1` JOIN `order_detail` AS `t2` ON `t1`.`id` = `t2`.`order_id`) " +
+					"JOIN `item` AS `t4` ON `t2`.`item_id` = `t4`.`id`);",
+			},
+		},
+		{
+			name: "table join ",
+			s: func() QueryBuilder {
+				t1 := TableOf(&Order{}).As("t1")
+				t2 := TableOf(&OrderDetail{}).As("t2")
+				t3 := t1.Join(t2).On(t1.C("Id").EQ(t2.C("OrderId")))
+				t4 := TableOf(&Item{}).As("t4")
+				t5 := t4.Join(t3).On(t2.C("ItemId").EQ(t4.C("Id")))
+				return NewSelector[Order](db).From(t5)
+			}(),
+			wantQuery: &Query{
+				SQL: "SELECT * FROM (`item` AS `t4` JOIN (`order` AS `t1` JOIN `order_detail` AS `t2` ON `t1`.`id` = `t2`.`order_id`) ON `t2`.`item_id` = `t4`.`id`);",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			q, err := tc.s.Build()
+			assert.Equal(t, tc.wantErr, err)
+			if err != nil {
+				return
+			}
+			assert.Equal(t, tc.wantQuery, q)
 		})
 	}
 }

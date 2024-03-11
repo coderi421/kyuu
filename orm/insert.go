@@ -40,9 +40,8 @@ type Inserter[T any] struct {
 	builder
 	values []*T // 缓存要插入的数据
 
-	core
 	//	db      *DB      // 注册映射关系的实例，以及使用哪种映射方法的实例，以及 DB 实例
-	sess    session  // db is the DB instance used for executing the query.
+	sess    Session  // db is the DB instance used for executing the query.
 	columns []string // update 语句中，要更新哪些字段
 	// 方案二
 	upsert *Upsert // 对应存在即更新语句： ON DUPLICATE KEY UPDATE
@@ -51,12 +50,13 @@ type Inserter[T any] struct {
 	// upsert []Assignable
 }
 
-func NewInserter[T any](sess session) *Inserter[T] {
+func NewInserter[T any](sess Session) *Inserter[T] {
 	c := sess.getCore()
 	return &Inserter[T]{
 		sess: sess,
-		core: c,
+
 		builder: builder{
+			core:    c,
 			dialect: c.dialect,
 			quoter:  c.dialect.quoter(),
 		},
@@ -99,7 +99,7 @@ func (i *Inserter[T]) Build() (*Query, error) {
 		return nil, errs.ErrInsertZeroRow
 	}
 	// 由于多条数据都一样，同一个 struct 所以这里处理第一条就可以拿到 db field 和 struct 的映射关系
-	m, err := i.r.Get(i.values[0])
+	m, err := i.r.Get(new(T))
 	if err != nil {
 		return nil, err
 	}
@@ -173,42 +173,25 @@ func (i *Inserter[T]) Build() (*Query, error) {
 }
 
 func (i *Inserter[T]) Exec(ctx context.Context) Result {
-	var handler Handler = i.execHandler
-	middlewares := i.mdls
-	for j := len(middlewares) - 1; j >= 0; j-- {
-		handler = middlewares[j](handler)
+	var err error
+	i.model, err = i.r.Get(new(T))
+	if err != nil {
+		return Result{
+			err: err,
+		}
 	}
 
-	qc := &QueryContext{
+	res := exec(ctx, i.sess, i.core, &QueryContext{
 		Builder: i,
 		Type:    "INSERT",
-	}
+	})
 
-	res := handler(ctx, qc)
+	var sqlRes sql.Result
 	if res.Result != nil {
-		return Result{
-			err: res.Err,
-			res: res.Result.(sql.Result),
-		}
+		sqlRes = res.Result.(sql.Result)
 	}
-
 	return Result{
 		err: res.Err,
-	}
-}
-
-func (i *Inserter[T]) execHandler(ctx context.Context, qc *QueryContext) *QueryResult {
-	q, err := qc.Builder.Build()
-	if err != nil {
-		return &QueryResult{
-			Err: err,
-		}
-	}
-
-	res, err := i.sess.execContext(ctx, q.SQL, q.Args...)
-
-	return &QueryResult{
-		Result: res,
-		Err:    err,
+		res: sqlRes,
 	}
 }

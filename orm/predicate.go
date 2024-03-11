@@ -11,6 +11,8 @@ const (
 	opNOT   = "NOT"
 	opAdd   = "+"
 	opMulti = "*"
+	opIN    = "IN"
+	opExist = "EXIST"
 )
 
 func (o op) String() string {
@@ -46,6 +48,13 @@ func exprOf(e any) Expression {
 type Predicate binaryExpr
 
 func (Predicate) expr() {}
+
+func Exist(sub Subquery) Predicate {
+	return Predicate{
+		op:    opExist,
+		right: sub,
+	}
+}
 
 func Not(p Predicate) Predicate {
 	return Predicate{

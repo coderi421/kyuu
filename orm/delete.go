@@ -10,18 +10,18 @@ type Deleter[T any] struct {
 
 	table string
 	where []Predicate
-	core
 	//	db      *DB      // 注册映射关系的实例，以及使用哪种映射方法的实例，以及 DB 实例
-	sess session // db is the DB instance used for executing the
+	sess Session // db is the DB instance used for executing the
 }
 
 // NewSelector creates a new instance of Selector.
-func NewDeleter[T any](sess session) *Deleter[T] {
+func NewDeleter[T any](sess Session) *Deleter[T] {
 	c := sess.getCore()
 	return &Deleter[T]{
-		core: c,
+
 		sess: sess,
 		builder: builder{
+			core:    c,
 			dialect: c.dialect,
 			quoter:  c.dialect.quoter(),
 		},
@@ -88,42 +88,26 @@ func (d *Deleter[T]) Where(predicates ...Predicate) *Deleter[T] {
 }
 
 func (d *Deleter[T]) Exec(ctx context.Context) Result {
-	var handler Handler = d.execHandler
-	middlewares := d.mdls
-	for j := len(middlewares) - 1; j >= 0; j-- {
-		handler = middlewares[j](handler)
+	var err error
+	d.model, err = d.r.Get(new(T))
+	if err != nil {
+		return Result{
+			err: err,
+		}
 	}
 
-	qc := &QueryContext{
+	res := exec(ctx, d.sess, d.core, &QueryContext{
 		Builder: d,
 		Type:    "DELETE",
-	}
+		Model:   d.model,
+	})
 
-	res := handler(ctx, qc)
+	var sqlRes sql.Result
 	if res.Result != nil {
-		return Result{
-			err: res.Err,
-			res: res.Result.(sql.Result),
-		}
+		sqlRes = res.Result.(sql.Result)
 	}
-
 	return Result{
 		err: res.Err,
-	}
-}
-
-func (d *Deleter[T]) execHandler(ctx context.Context, qc *QueryContext) *QueryResult {
-	q, err := qc.Builder.Build()
-	if err != nil {
-		return &QueryResult{
-			Err: err,
-		}
-	}
-
-	res, err := d.sess.execContext(ctx, q.SQL, q.Args...)
-
-	return &QueryResult{
-		Result: res,
-		Err:    err,
+		res: sqlRes,
 	}
 }
